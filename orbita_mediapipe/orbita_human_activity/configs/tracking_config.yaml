@@ -1,0 +1,33 @@
+# ==============================================================================
+# ORBITA: Multi-Person (Human 1 / Human 2) Tracking Configuration
+# ==============================================================================
+# Tracking Policy:
+# 1. Multi-person detection limit: 2 people (Human 1 and Human 2).
+# 2. Association metric: Weighted combination of 3D Torso/Hip Euclidean distance
+#    and 2D bounding box IoU / normalized centroid distance.
+# 3. Identity persistence: Cost matrix matching (Hungarian / greedy minimum cost)
+#    with max association distance gating.
+# 4. Occlusion handling: Track coasting for up to `max_lost_frames` before track expiration.
+# 5. Limitations: Short-term spatial-temporal tracker only; does NOT perform biometric
+#    re-identification across prolonged exits or severe mutual occlusion.
+# ==============================================================================
+
+tracking:
+  max_tracked_persons: 2
+  allowed_slots: ["HUMAN_1", "HUMAN_2"]
+  
+  # Association weights and thresholds
+  weights:
+    euclidean_3d: 0.65
+    centroid_2d: 0.35
+  
+  # Gating thresholds: If cost exceeds this threshold, do NOT associate
+  max_3d_displacement_per_second_m: 2.5 # Max plausible human movement velocity in m/s
+  max_cost_threshold: 0.85
+  
+  # Track life-cycle parameters
+  min_hits_to_confirm: 2      # Frames before track moves from TENTATIVE to CONFIRMED
+  max_lost_frames: 15         # Maximum consecutive frames to coast during temporary occlusion (~0.5s @ 30fps)
+  
+  # Re-entry and slot policy
+  slot_policy: "PERSISTENT_REENTRY" # Options: PERSISTENT_REENTRY, FIRST_COME_FIRST_SERVE, SPATIAL_SLOT_LEFT_RIGHT

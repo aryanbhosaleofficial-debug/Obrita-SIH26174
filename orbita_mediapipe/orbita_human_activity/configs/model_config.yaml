@@ -1,0 +1,35 @@
+# ==============================================================================
+# ORBITA: Bottleneck + ReLU + Bottleneck Activity Recognition Model Configuration
+# ==============================================================================
+# Architecture Clarification:
+# - Neural Architecture: Explicitly composed of an input projection, a primary
+#   Bottleneck linear layer, a non-linear ReLU activation, a secondary Bottleneck
+#   layer, and a final linear classification head.
+# - Optimizer: Adam is the optimization algorithm used during training to update
+#   the neural network weights, decoupled from the model architecture itself.
+# ==============================================================================
+
+model:
+  name: "OrbitaBottleneckHAR"
+  sequence_length: 30       # Window of 30 frames (~1.0s at 30 fps)
+  feature_dim: 74           # 33 landmarks * subsets + relative vectors + angles + velocities + missingness
+  
+  # Explicit Bottleneck Architecture Dimensions
+  input_dim: 74             # Per-frame feature dimension
+  bottleneck_dim_1: 32      # First compression bottleneck (e.g., 74 -> 32)
+  activation: "ReLU"        # Non-linear activation between bottlenecks
+  bottleneck_dim_2: 16      # Second compression bottleneck (32 -> 16)
+  dropout_rate: 0.25        # Regularization dropout
+  num_classes: 6            # 6 BAS activity classes
+  
+training:
+  batch_size: 16
+  learning_rate: 0.001      # Adam initial learning rate
+  weight_decay: 0.0001      # Adam L2 regularization
+  betas: [0.9, 0.999]       # Adam momentum parameters
+  eps: 1.0e-8               # Adam numerical stability epsilon
+  epochs: 20
+  val_split_ratio: 0.2      # 20% validation split (by distinct sessions/recordings to prevent temporal leakage)
+  early_stopping_patience: 5
+  checkpoint_dir: "checkpoints"
+  random_seed: 42
