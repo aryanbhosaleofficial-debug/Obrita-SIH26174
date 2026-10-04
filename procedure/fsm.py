@@ -1,39 +1,109 @@
-"""
-Procedure finite-state machine.
+"""Procedure finite-state machine.
 
-Implementation status:
-    Scaffold only.
-
-Input:
-    ActivityEvent (shared/schemas/activity_event.py) from Module 05 — Perception Fusion
-    Procedure definition loaded by procedure_loader.py from procedures/*.yaml
-
-Output:
-    StepOutcome per event, current step, next-step suggestion (via next_step.py)
-
-Owner:
-    Procedure FSM (downstream consumer of Module 05)
-
-Scope:
-    This is the ONLY place where procedure order is judged (correct step,
-    wrong-order step, skipped step). Perception modules 01-05 only report
-    what was observed.
+The project is still scaffolded, but the procedure logic is the core runtime path
+that the rest of the pipeline is intended to feed. This minimal state machine is
+kept intentionally small: it tracks the current expected step, accepts
+ActivityEvent objects, and reports whether the event matches the expected task,
+comes too early, skips ahead, or is unrelated.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Sequence
+
+from shared.schemas.activity_event import ActivityEvent
 
 
 class StepOutcome(str, Enum):
     """Result of validating one ActivityEvent against the procedure."""
 
-    CORRECT = "correct"            # event matches the current expected step
-    WRONG_ORDER = "wrong_order"    # event matches a step that is not allowed yet
-    SKIPPED = "skipped"            # event matches a later step; earlier steps were skipped
-    UNRELATED = "unrelated"        # event does not match any procedure step
-    COMPLETED = "completed"        # procedure already finished
+    CORRECT = "correct"
+    WRONG_ORDER = "wrong_order"
+    SKIPPED = "skipped"
+    UNRELATED = "unrelated"
+    COMPLETED = "completed"
 
 
-# TODO: ProcedureFSM holding the ordered steps and the index of the current step.
-# TODO: on_event(event: ActivityEvent) -> StepOutcome, using step_validator.py.
-# TODO: Keep a history of (event_id, step_id, outcome) for outputs/events/.
-# TODO: Reset / restart support for demo runs.
+@dataclass
+class ProcedureFSM:
+    """Tracks progress through an ordered procedure definition."""
+
+    steps: Sequence[dict[str, Any]] = field(default_factory=list)
+    current_index: int = 0
+    completed_steps: list[str] = field(default_factory=list)
+    history: list[dict[str, Any]] = field(default_factory=list)
+
+    def reset(self) -> None:
+        self.current_index = 0
+        self.completed_steps = []
+        self.history = []
+
+    def current_step(self) -> dict[str, Any] | None:
+        if self.current_index >= len(self.steps):
+            return None
+        return dict(self.steps[self.current_index])
+
+    def _advance(self) -> None:
+        current = self.current_step()
+        if current is None:
+            return
+        self.completed_steps.append(str(current.get("id", self.current_index)))
+        self.current_index += 1
+
+    def on_event(self, event: ActivityEvent) -> tuple[StepOutcome, dict[str, Any] | None]:
+        """Process one ActivityEvent and report the procedure outcome."""
+
+        if not self.steps:
+            return StepOutcome.UNRELATED, None
+
+        if self.current_index >= len(self.steps):
+            return StepOutcome.COMPLETED, None
+
+        current = self.current_step()
+        if current is None:
+            return StepOutcome.COMPLETED, None
+
+        expected_activity = current.get("expected_activity")
+        expected_object = current.get("target_object")
+
+        if expected_activity == event.activity_label:
+            if expected_object is None or expected_object == event.target_object_class:
+                self._advance()
+                outcome = StepOutcome.CORRECT
+                self.history.append(
+                    {
+                        "event_id": event.event_id,
+                        "step_id": current.get("id"),
+                        "outcome": outcome.value,
+                    }
+                )
+                return outcome, self.current_step()
+
+        for index, step in enumerate(self.steps):
+            if step.get("expected_activity") == event.activity_label:
+                if index < self.current_index:
+                    outcome = StepOutcome.WRONG_ORDER
+                else:
+                    outcome = StepOutcome.SKIPPED
+                self.history.append(
+                    {
+                        "event_id": event.event_id,
+                        "step_id": step.get("id"),
+                        "outcome": outcome.value,
+                    }
+                )
+                return outcome, self.current_step()
+
+        self.history.append(
+            {
+                "event_id": event.event_id,
+                "step_id": None,
+                "outcome": StepOutcome.UNRELATED.value,
+            }
+        )
+        return StepOutcome.UNRELATED, self.current_step()
+
+
+__all__ = ["ProcedureFSM", "StepOutcome"]

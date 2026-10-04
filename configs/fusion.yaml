@@ -51,10 +51,10 @@ temporal:
 
 activities:
   # Configurable activity label set; must match expected_activity values in procedures/*.yaml.
-  # Placeholders only.
   labels:
     - unknown
     - PLACEHOLDER_ACTIVITY
+    - PLACEHOLDER_ACTIVITY_2
 
 output:
   events_dir: outputs/events

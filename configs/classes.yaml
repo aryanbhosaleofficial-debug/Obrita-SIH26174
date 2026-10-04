@@ -24,6 +24,10 @@ classes:
 
   # Experiment objects the operator interacts with.
   - id: null
+    name: PLACEHOLDER_OBJECT
+    role: experiment_object
+
+  - id: null
     name: PLACEHOLDER_OBJECT_A
     role: experiment_object
 

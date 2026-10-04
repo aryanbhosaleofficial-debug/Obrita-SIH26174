@@ -22,13 +22,13 @@ experiment:
 
 steps:
   - id: "step_01"
-    description: "PLACEHOLDER: describe the first operator action"
+    description: "Describe the first operator action"
     expected_activity: "PLACEHOLDER_ACTIVITY"
     target_object: "PLACEHOLDER_OBJECT"
     optional: false
 
   - id: "step_02"
-    description: "PLACEHOLDER: describe the second operator action"
-    expected_activity: "PLACEHOLDER_ACTIVITY"
-    target_object: "PLACEHOLDER_OBJECT"
+    description: "Describe the second operator action"
+    expected_activity: "PLACEHOLDER_ACTIVITY_2"
+    target_object: "PLACEHOLDER_OBJECT_A"
     optional: false
