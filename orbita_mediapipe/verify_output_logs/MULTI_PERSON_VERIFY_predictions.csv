@@ -1,3 +1,0 @@
-timestamp_ms,person_id,predicted_class_id,predicted_class_name,confidence,is_reliable,notes
-957,HUMAN_1,0,IDLE_MONITORING,0.18798528611660004,False,Nominal inference
-957,HUMAN_2,0,IDLE_MONITORING,0.18798528611660004,False,Nominal inference

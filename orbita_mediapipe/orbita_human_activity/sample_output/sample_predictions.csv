@@ -1,3 +1,0 @@
-timestamp_ms,person_id,predicted_class_id,predicted_class_name,confidence,is_reliable,notes
-1000,HUMAN_1,1,RACK_INSPECTION,0.8845,True,SAMPLE_RECORD_FOR_SCHEMA_VERIFICATION
-1000,HUMAN_2,0,IDLE_MONITORING,0.8214,True,SAMPLE_RECORD_FOR_SCHEMA_VERIFICATION

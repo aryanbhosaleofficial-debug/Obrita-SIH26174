@@ -1,8 +1,0 @@
-# ORBITA Prototype Requirements
-# Compatible with Python 3.10 - 3.12
-torch>=2.0.0
-mediapipe>=0.10.0
-opencv-python>=4.8.0
-numpy>=1.24.0
-pyyaml>=6.0
-matplotlib>=3.7.0

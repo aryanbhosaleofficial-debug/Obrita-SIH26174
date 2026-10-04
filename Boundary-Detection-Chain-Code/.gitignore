@@ -1,8 +1,0 @@
-venv/
-__pycache__/
-*.py[cod]
-*$py.class
-output/
-.streamlit/secrets.toml
-.env
-.DS_Store

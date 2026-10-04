@@ -1,3 +1,0 @@
-timestamp_ms,person_id,predicted_class_id,predicted_class_name,confidence,is_reliable,notes
-957,HUMAN_1,4,EQUIPMENT_MAINTENANCE,0.23673194646835327,False,Nominal inference
-957,HUMAN_2,4,EQUIPMENT_MAINTENANCE,0.23673194646835327,False,Nominal inference
