@@ -97,7 +97,7 @@ def test_approach_retreat_and_leaving_history(config, packet, scene):
     d, h = scene
     hand_frames = []
     # Start near, then continuously retreat beyond the proximity threshold.
-    for x in [202, 212, 224, 236, 248, 260, 272, 284]:
+    for x in [202, 204, 212, 224, 236, 248, 260, 272, 284]:
         hand = deepcopy(h[0])
         hand.landmarks = [Point2D(x, 120)]
         hand.palm_center = Point2D(x, 120)
@@ -108,6 +108,10 @@ def test_approach_retreat_and_leaving_history(config, packet, scene):
     assert results[2].associations[0].distance_trend == DistanceTrend.RETREATING
     assert any(
         i.interaction_type.value == "hand_leaving_object"
+        for i in results[4].interactions
+    )
+    assert all(
+        i.interaction_type.value != "hand_leaving_object"
         for i in results[-1].interactions
     )
     with scripted(config, [d], list(reversed(hand_frames))) as pipeline:

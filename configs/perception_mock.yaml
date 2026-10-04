@@ -1,16 +1,4 @@
-# Empty mock backends by default; example injects an explicitly synthetic scene.
-perception:
-  detector:
-    backend: mock
-  hand_tracker:
-    backend: mock
-  reference_frame:
-    enabled: true
-    type: manual
-    reference_id: synthetic_demo_rack
-    corners_normalized: [[0, 0], [1, 0], [1, 1], [0, 1]]
-  stabilization:
-    detection_min_frames: 3
-    interaction_min_frames: 4
-    max_missing_frames: 2
-    ema_alpha: 0.5
+pipeline:
+  core: perception.yaml
+  yolo: yolo_mock.yaml
+  optimization: optimization_mock.yaml

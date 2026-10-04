@@ -135,6 +135,8 @@ def test_yolo_initialization_device_selection(
 ):
     model_path = tmp_path / "local.pt"
     model_path.touch()
+    classes_path = tmp_path / "classes.yaml"
+    classes_path.write_text("classes: [{id: 0, name: tool}]")
     loaded = []
     monkeypatch.setitem(
         sys.modules,
@@ -148,7 +150,9 @@ def test_yolo_initialization_device_selection(
         sys.modules,
         "ultralytics",
         SimpleNamespace(
-            YOLO=lambda path, task: loaded.append(path) or SimpleNamespace()
+            YOLO=lambda path, task: (
+                loaded.append(path) or SimpleNamespace(names={0: "tool"})
+            )
         ),
     )
     monkeypatch.setitem(
@@ -157,7 +161,12 @@ def test_yolo_initialization_device_selection(
         SimpleNamespace(checks=SimpleNamespace(AUTOINSTALL=False)),
     )
     adapter = UltralyticsYoloDetector(
-        DetectorConfig(model_path=model_path, device=device, cpu_fallback=fallback)
+        DetectorConfig(
+            model_path=model_path,
+            device=device,
+            cpu_fallback=fallback,
+            classes_path=classes_path,
+        )
     )
     adapter.initialize()
     assert adapter._device == expected and loaded == [str(model_path)]
@@ -172,6 +181,35 @@ def test_offline_tracking_rejects_reid_model(tmp_path):
         DetectorConfig(model_path=model_path, tracking=True, tracker_path=tracker_path)
     )
     with pytest.raises(InitializationError, match="with_reid"):
+        adapter.initialize()
+
+
+def test_missing_tracker_dependency_fails_at_startup(monkeypatch, tmp_path):
+    model = tmp_path / "local.pt"
+    model.touch()
+    classes = tmp_path / "classes.yaml"
+    classes.write_text("classes: [{id: 0, name: tool}]")
+    tracker = tmp_path / "tracker.yaml"
+    tracker.write_text("tracker_type: bytetrack")
+    monkeypatch.setattr("yolo.inference.detector.find_spec", lambda name: None)
+    adapter = UltralyticsYoloDetector(
+        DetectorConfig(
+            model_path=model, classes_path=classes, tracking=True, tracker_path=tracker
+        )
+    )
+    with pytest.raises(InitializationError, match="requires local lap"):
+        adapter.initialize()
+
+
+def test_whitelist_outside_project_classes_fails_at_startup(tmp_path):
+    model = tmp_path / "local.pt"
+    model.touch()
+    classes = tmp_path / "classes.yaml"
+    classes.write_text("classes: [{id: 0, name: tool}]")
+    adapter = UltralyticsYoloDetector(
+        DetectorConfig(model_path=model, classes_path=classes, class_whitelist=[9])
+    )
+    with pytest.raises(InitializationError, match="class_whitelist"):
         adapter.initialize()
 
 
@@ -201,7 +239,7 @@ def test_mediapipe_rgb_pixels_and_handedness_score_separate():
             observed.update(kwargs)
 
     class Landmarker:
-        def detect(self, image):
+        def detect_for_video(self, image, timestamp_ms):
             return SimpleNamespace(
                 hand_landmarks=[[SimpleNamespace(x=0.5, y=0.25) for _ in range(21)]],
                 handedness=[[SimpleNamespace(category_name="Left", score=0.95)]],
@@ -215,7 +253,7 @@ def test_mediapipe_rgb_pixels_and_handedness_score_separate():
     adapter._mp = SimpleNamespace(Image=Image, ImageFormat=SimpleNamespace(SRGB="rgb"))
     image = np.zeros((100, 200, 3), np.uint8)
     image[..., 0] = 123
-    hand = adapter.track(image)[0]
+    hand = adapter.track(image, timestamp_s=0)[0]
     assert observed["data"][0, 0].tolist() == [0, 0, 123]
     assert hand.landmarks[0] == Point2D(100, 25)
     assert hand.palm_center == Point2D(100, 25)
@@ -243,7 +281,7 @@ def test_mediapipe_tasks_initialization_options(monkeypatch, tmp_path):
     vision = SimpleNamespace(
         HandLandmarkerOptions=Options,
         HandLandmarker=Factory,
-        RunningMode=SimpleNamespace(IMAGE="IMAGE"),
+        RunningMode=SimpleNamespace(VIDEO="VIDEO"),
     )
     monkeypatch.setitem(sys.modules, "mediapipe", SimpleNamespace())
     monkeypatch.setitem(sys.modules, "mediapipe.tasks", SimpleNamespace(python=python))
@@ -252,7 +290,7 @@ def test_mediapipe_tasks_initialization_options(monkeypatch, tmp_path):
     )
     adapter = MediaPipeHandTracker(HandTrackerConfig(model_path=task, max_hands=2))
     adapter.initialize()
-    assert captured["running_mode"] == "IMAGE" and captured["num_hands"] == 2
+    assert captured["running_mode"] == "VIDEO" and captured["num_hands"] == 2
     assert captured["base_options"]["model_asset_path"] == str(task)
     adapter.close()
 

@@ -1,19 +1,14 @@
 """Copy-only BGR preprocessing with reversible source-coordinate scaling."""
 
 import math
-from dataclasses import dataclass, replace
+from numbers import Integral, Real
 
 import cv2
 import numpy as np
 
 from perception.config import PreprocessingConfig
 from perception.contracts import (
-    BoundingBox,
-    Detection,
     FramePacket,
-    HandObservation,
-    Point2D,
-    PoseObservation,
 )
 
 
@@ -21,36 +16,9 @@ class InvalidFrameError(ValueError):
     pass
 
 
-@dataclass(frozen=True)
-class PreprocessedFrame:
-    image: np.ndarray
-    scale_x: float
-    scale_y: float
+from shared.schemas.prepared_frame import PreparedFrame
 
-    def source_point(self, point: Point2D) -> Point2D:
-        return Point2D(point.x / self.scale_x, point.y / self.scale_y)
-
-    def source_detection(self, detection: Detection) -> Detection:
-        b = detection.bbox
-        return replace(
-            detection,
-            bbox=BoundingBox(
-                b.x1 / self.scale_x,
-                b.y1 / self.scale_y,
-                b.x2 / self.scale_x,
-                b.y2 / self.scale_y,
-            ),
-        )
-
-    def source_hand(self, hand: HandObservation) -> HandObservation:
-        return replace(
-            hand,
-            landmarks=[self.source_point(p) for p in hand.landmarks],
-            palm_center=self.source_point(hand.palm_center),
-        )
-
-    def source_pose(self, pose: PoseObservation) -> PoseObservation:
-        return replace(pose, landmarks=[self.source_point(p) for p in pose.landmarks])
+PreprocessedFrame = PreparedFrame
 
 
 def preprocess(packet: FramePacket, config: PreprocessingConfig) -> PreprocessedFrame:
@@ -66,11 +34,15 @@ def preprocess(packet: FramePacket, config: PreprocessingConfig) -> Preprocessed
         raise InvalidFrameError("expected a nonempty uint8 HxWx3 image")
     if (packet.height, packet.width) != image.shape[:2]:
         raise InvalidFrameError("frame dimensions disagree with metadata")
-    if type(packet.frame_id) is not int or packet.frame_id < 0:
+    if (
+        isinstance(packet.frame_id, (bool, np.bool_))
+        or not isinstance(packet.frame_id, Integral)
+        or packet.frame_id < 0
+    ):
         raise InvalidFrameError("frame_id must be a nonnegative integer")
     if (
         isinstance(packet.timestamp_s, bool)
-        or not isinstance(packet.timestamp_s, (int, float))
+        or not isinstance(packet.timestamp_s, Real)
         or not math.isfinite(packet.timestamp_s)
     ):
         raise InvalidFrameError("timestamp_s must be finite monotonic seconds")
@@ -81,7 +53,7 @@ def preprocess(packet: FramePacket, config: PreprocessingConfig) -> Preprocessed
     image = (
         cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         if packet.color_format == "RGB"
-        else image.copy()
+        else image
     )
     if config.max_width is not None and packet.width > config.max_width:
         new_height = max(1, round(packet.height * config.max_width / packet.width))
@@ -94,8 +66,11 @@ def preprocess(packet: FramePacket, config: PreprocessingConfig) -> Preprocessed
             lab[:, :, 0]
         )
         image = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    if image is packet.image:
+        image = image.copy()
     return PreprocessedFrame(
         np.ascontiguousarray(image),
         image.shape[1] / packet.width,
         image.shape[0] / packet.height,
+        source=packet,
     )

@@ -1,84 +1,132 @@
-# Module 01 integration decision
+# Authoritative architecture decision — ORBITA
 
-## Architectural conflict
+Decision: restore the team decomposition. This supersedes the combined Module 01
+architecture introduced by commit d281159. Inspection found its only active
+consumers were examples/tests; numbered modules were still scaffolds.
 
-The scaffold assigns camera acquisition/orchestration to `01_perception_core`,
-YOLO to `02_yolo`, and pose/hands/interaction to `03_optimization`. The requested
-Module 01 implementation covers the full perception layer but explicitly
-excludes owning the camera or main application orchestration. These are two
-different decomposition plans. Implementing both as a single hidden chain would
-duplicate inference and misrepresent ownership.
+Camera / FramePacket -> Module 01 FrameProcessor -> PreparedFrame
+-> Module 02 YoloPipeline -> ObjectFrame
+-> Module 03 OptimizationPipeline -> OptimizationOutputPacket
+-> Module 04 boundary input validation -> team-owned boundary analysis
+-> Module 05 HAR -> procedure FSM.
 
-The new import-safe `perception` package implements the requested Module 01.
-The numbered scaffold remains intact as the team's historical planning layout;
-no functional teammate code was replaced. Other modules should integrate using
-the contracts below, then the team can resolve their eventual ownership plan.
-There is no implicit loading of numbered packages and no normal invalid Python
-`from 02_yolo ...` import.
+## Module 01 owns
 
-## Input and output
+Frame validation, metadata/order/session checks, copy-safe preprocessing and
+restoration transforms; shared coordinate/identity/status/configuration
+conventions and typed integration boundaries. Implementation: perception/.
+01_perception_core points here; its old camera/orchestration plan is superseded.
+Camera ownership remains external.
 
-```text
-External frame source
-    -> existing shared.schemas.FramePacket
-    -> perception.PerceptionPipeline.process(packet)
-    -> shared.schemas.PerceptionFrameResult
-    -> external Module 02 / temporal HAR consumer
-```
+## Module 01 does NOT own
 
-The existing source packet keeps `frame_id`, monotonic `timestamp_s`, image,
-actual width/height, source/color format and source status. It is not redefined.
-The new result contract also lives in `shared/schemas` and is re-exported from
-`perception.contracts`. Pixel geometry always refers to the original image.
-The source image and injected inference observations are never modified.
+YOLO inference/tracking (02); hands/pose, live rack calibration, continuity and
+interaction processing (03); boundary algorithms (04); HAR (05); FSM, GUI,
+speech, recording or application orchestration. Reusable implementations move
+to numbered owners. Compatibility modules re-export; they contain no algorithms.
 
-## Module 02 boundary
+## Input, output, next module
 
-In the requested decomposition, the next reasoning consumer accepts
-`PerceptionFrameResult` directly. It may use:
+Input: shared.schemas.FramePacket, uint8 BGR/RGB original image, actual size,
+source/session identity, increasing integral frame ID (including NumPy integers),
+monotonic seconds. Output: shared.schemas.PreparedFrame retaining source packet,
+prepared BGR image, reversible scale, structured diagnostics and timings.
+Next module: Module 02 YoloPipeline.
 
-* `detections[*].is_stable`, `duration_frames`, real `track_id` or `None`;
-* `hands[*].identity_persistent` rather than handedness to assess identity;
-* `associations` for raw geometric evidence and ambiguity;
-* confirmed `interactions` and their current frame's detection/hand indices;
-* confidence components, coordinate validity, status and warnings;
-* preserved source identity/time and measured stage timings.
+ObjectFrame, SpatialFeaturePacket, OptimizationOutputPacket are authoritative
+stage packets. Shared observation leaves are defined once in observations.py.
+PerceptionFrameResult becomes a compatibility alias for Module 03's observation
+payload, not a Module 01 output. Import-safe yolo, optimization and boundary
+packages locate implementations inside existing numbered owner directories.
+The external integration chain composes stages and contains no inference logic.
 
-Per-frame list indices are **not persistent IDs**. `object_id` is the string form
-of a supplied backend track ID or `None`. The same numerical track ID can be
-reused by a backend in a later session, so namespace it by source/session.
-`identity_reliable` is a continuity flag, not a guarantee that a tracker never
-swaps identities. Missing observations are absent, not emitted with stale data.
+## Coordinate conventions
 
-For existing scaffold code expecting Module 02's `ObjectFrame`, use:
+Model outputs are restored to original pixels before crossing module boundaries.
+x/W,y/H are display coordinates only. Euclidean fallback uses x/diagonal,y/diagonal
+with an explicit coordinate label. Rack and image-diagonal thresholds are separate.
+Static manual calibration is usable but never claims current-frame verification.
+Live marker calibration reports actual verification and invalidates on marker loss.
 
-```python
-from perception.integration import to_object_frame
+## Identity conventions
 
-result = pipeline.process(frame_packet)
-object_frame = to_object_frame(result)
-# Pass object_frame to existing object-only consumers.
-# Pass result itself to hand/interaction/temporal consumers.
-```
+track_id is backend-provided; None is valid. continuity_key is session-local,
+short-term continuity generated by Module 03. identity_persistent identifies
+tracker-backed identity. Namespace keys by source/session. Ambiguous crossings
+restart continuity. Handedness and MediaPipe array index are not identity keys.
+Tracker IDs can be reused after a backend reset. Use source/session, continuity
+keys and reset diagnostics for temporal state; a tracker integer is never a
+globally permanent identity.
 
-The bridge copies existing `DetectedObject` fields, stability and real IDs, with
-unchanged frame/time/dimensions/status. It leaves `reference_anchors` empty:
-manual calibration is not evidence of a detected rack anchor. It does not map
-hand geometry into invented gesture/optimization/HAR packets. If Module 02 will
-continue owning YOLO inference, inject its detector through `ObjectDetector`
-instead of running YOLO twice. The adapter must return local normalized
-`Detection` dataclasses in its input image's pixels.
+## Error/status conventions
 
-## Required consumer rules
+Capability notices differ from runtime warnings. Optional missing scores,
+disabled tracking and static calibration are notices. OK is usable processing;
+NO_DETECTION is healthy empty output; DEGRADED means partial runtime loss;
+ERROR/FAILED and INVALID_INPUT mean unusable stage output. Codes carry structured
+details separately from display text. Unknown confidence stays None. Reliability
+is serialized explicitly. Missing/malformed frames age histories; source/session/
+resolution changes, resets or excessive time gaps require fresh histories. A new
+source/session requires explicit reset; it is otherwise rejected. Resolution or
+excessive time gaps automatically restart histories and tracking backends.
 
-Interpretation belongs downstream. Near/contact candidates must not be treated
-as verified physical touch, grasping, step completion or procedure order. Read
-`coordinate_frame_valid` before using rack polygons/landmarks. Fallback image
-fractions are explicitly labelled and not orientation invariant. Inspect
-`is_stable`, identity and confidence; preserve warning/status uncertainty.
+Reliability means healthy processing AND at least one currently observed,
+confirmed object. It does not certify identity, calibration freshness, unambiguous
+association, action correctness or physical contact. Inspect those explicit fields
+for the intended downstream decision. Empty scenes are healthy but unreliable for
+object-based temporal reasoning. Capability notices alone never lower status.
 
-One pipeline handles one ordered source per session. The frame source supplies
-strictly increasing frame IDs and monotonic timestamps. Call `reset()` before
-switching source/replaying a session, and `close()` on shutdown. Use a dedicated
-worker; the pipeline does not drive GUI events or create application threads.
-Downstream HAR, alerts, logging and procedure state remain external.
+`ERROR` (alias `FAILED`, wire value `error`) means inference has no functioning
+required observation path; one failed backend with a remaining usable path is
+`DEGRADED`. Config/model startup incompatibilities raise `InitializationError`;
+they are not converted into permanently degraded runtime output. A configured
+reference lost at runtime degrades the frame; deliberately disabled reference is
+a notice with explicit image-diagonal coordinates.
+
+Serialize `dataclasses.asdict(OptimizationOutputPacket)` or the observation
+payload's `to_dict()`. Both include reliability, notices, warning codes, reference
+source/verification and nullable confidence. `confidence.final` is the minimum
+available evidence components, not a probability; all unknown yields `None`.
+
+## Configuration ownership
+
+perception.yaml owns preprocessing only. yolo.yaml is the sole real detector
+configuration and validates weights against classes.yaml. optimization.yaml owns
+hands, reference, interaction and temporal settings. Integration profiles reference
+these files. Mock data and demo thresholds are explicitly synthetic/configurable.
+
+## Verification boundary
+
+Execute FrameProcessor -> YoloPipeline -> OptimizationPipeline -> actual Module 04
+input validator using real shared packets. Model-free tests inject synthetic
+inference backends only; stage logic and packet conversion stay real. Boundary
+segmentation, HAR and FSM are not replaced or claimed complete by this repair.
+
+## Migration from the conflicting implementation
+
+`perception.PerceptionPipeline` is a lazy compatibility wrapper around the SAME
+`integration.chain.PerceptionChain`; it returns only Module 03's observations.
+New consumers must use the real stage packets. `perception.detector`, hands,
+geometry/interaction/stabilizer and mocks/visualization modules are re-exports
+only. No alternate inference or optimization implementation lives in Module 01.
+
+`PerceptionConfig` aliases shared `PipelineConfig`, an application aggregate.
+`configs/perception.yaml` now accepts preprocessing only; use the demo/mock
+profile with `PerceptionChain.from_yaml` to configure the complete chain.
+`configs/perception_tracker.yaml` is retired; use `configs/yolo_tracker.yaml`.
+
+Previously unconsumed scaffold leaves now alias canonical types:
+`DetectedObject = Detection`, `HandLandmarks = HandObservation`,
+`InteractionCandidate = InteractionPrimitive`, `RackReference = ReferenceFrameInfo`.
+This intentionally changes their old scaffold constructors. Construct detection
+geometry with `bbox=BoundingBox(...)`; `bbox_xyxy` is a read-only compatibility
+view. Hands use `Point2D` original pixels and optional raw handedness. Interactions
+use `InteractionType`, explicit indices/continuity/units and evidence components.
+Use `SpatialFeaturePacket.reference_frame` for serialized provenance;
+`rack_reference` is only a compatibility view. No active pre-repair consumer used
+the scaffold constructors; repository searches and all real tests were checked.
+
+The original `MotionFeatures`, skeleton, gesture, boundary and HAR schemas remain
+for teammate development. Unpopulated optional fields are not evidence that those
+algorithms ran. Original GUI, procedure/FSM and inactive numbered algorithms were
+not replaced.

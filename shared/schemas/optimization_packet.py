@@ -15,9 +15,7 @@ Units:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
-from shared.enums.interaction_state import InteractionState
 from shared.enums.module_status import ModuleStatus
 from shared.schemas.object_frame import ObjectFrame
 from shared.schemas.spatial_feature_packet import SpatialFeaturePacket
@@ -36,21 +34,9 @@ class MotionFeatures:
     # Direction relative to rack x-axis, degrees.
 
 
-@dataclass
-class InteractionCandidate:
-    hand: str
-    # "left" / "right" / "unknown"
-
-    object_track_id: int
-    # track_id from ObjectFrame.
-
-    state: InteractionState
-    distance_norm: Optional[float] = None
-    # Normalized hand-object distance (definition in 03_optimization/README.md).
-
-    confidence: float = 0.0
-    confirmed: bool = False
-    # True after multi-frame confirmation.
+from shared.diagnostics import Diagnostic
+from shared.schemas.observations import InteractionPrimitive as InteractionCandidate
+from shared.schemas.observations import OptimizationObservations
 
 
 @dataclass
@@ -58,9 +44,9 @@ class GestureResult:
     label: str
     # From the configured gesture label set; "unknown" when evidence is insufficient.
 
-    confidence: float = 0.0
-    window_start_frame_id: Optional[int] = None
-    window_end_frame_id: Optional[int] = None
+    confidence: float | None = None
+    window_start_frame_id: int | None = None
+    window_end_frame_id: int | None = None
     confirmed: bool = False
 
 
@@ -71,19 +57,26 @@ class OptimizationOutputPacket:
     timestamp_s: float
 
     # Optional ---------------------------------------------------------------
-    target_track_id: Optional[int] = None
+    target_track_id: int | None = None
     # Operator track_id the features describe.
 
-    object_frame: Optional[ObjectFrame] = None
-    spatial: Optional[SpatialFeaturePacket] = None
+    object_frame: ObjectFrame | None = None
+    spatial: SpatialFeaturePacket | None = None
     # Read-only pass-through of upstream packets for the same frame_id.
 
-    motion: Optional[MotionFeatures] = None
+    motion: MotionFeatures | None = None
     interactions: list[InteractionCandidate] = field(default_factory=list)
-    gesture: Optional[GestureResult] = None
+    gesture: GestureResult | None = None
 
     quality_ok: bool = False
     quality_reasons: list[str] = field(default_factory=list)
     # Why the quality gate failed (empty when quality_ok is True).
 
     status: ModuleStatus = ModuleStatus.OK
+    observations: OptimizationObservations | None = None
+    source_id: str = "camera_0"
+    session_id: str = "default"
+    reliable_for_temporal_reasoning: bool = False
+    warnings: list[Diagnostic] = field(default_factory=list)
+    notices: list[Diagnostic] = field(default_factory=list)
+    stage_timings_ms: dict[str, float] = field(default_factory=dict)

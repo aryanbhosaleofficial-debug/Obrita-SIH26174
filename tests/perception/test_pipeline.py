@@ -15,6 +15,7 @@ from perception.detector import InitializationError
 from perception.integration import to_object_frame
 from perception.mocks import MockDetector, MockHandTracker
 from perception.visualization import draw_perception_overlay
+from shared.diagnostics import WarningCode
 from shared.enums.module_status import ModuleStatus
 
 
@@ -56,9 +57,9 @@ def test_no_objects_and_no_hands(config, packet, scene):
             result = pipeline.process(packet())
         assert result.interactions == []
         if not detections:
-            assert "no_objects" in result.warnings
+            assert result.detections == [] and not result.warnings
         if not hands:
-            assert "no_hands" in result.warnings
+            assert result.hands == [] and not result.warnings
         if not detections and not hands:
             assert result.status == ModuleStatus.NO_DETECTION
 
@@ -76,7 +77,7 @@ class FailingDetector(MockDetector):
 
 
 class FailingHands(MockHandTracker):
-    def track(self, image):
+    def track(self, image, timestamp_s=None):
         raise RuntimeError("simulated tracker failure")
 
 
@@ -90,7 +91,10 @@ def test_runtime_backend_failure_returns_warning(config, packet, scene, failed):
     ) as pipeline:
         result = pipeline.process(packet())
     assert result.status == ModuleStatus.DEGRADED
-    assert any("failure" in w for w in result.warnings)
+    assert any(
+        w.code in (WarningCode.DETECTOR_FAILURE, WarningCode.HAND_TRACKER_FAILURE)
+        for w in result.warnings
+    )
     assert result.interactions == []
     assert bool(result.hands) == (failed == "detector")
     assert bool(result.detections) == (failed == "hands")
@@ -116,8 +120,8 @@ def test_reference_failure_falls_back_explicitly(config, packet, scene):
     assert not result.coordinate_frame_valid
     assert result.detections[0].reference_polygon is None
     assert result.hands[0].reference_landmarks is None
-    assert result.associations[0].coordinate_frame == CoordinateFrame.NORMALIZED_IMAGE
-    assert "reference_frame_unavailable" in result.warnings
+    assert result.associations[0].coordinate_frame == CoordinateFrame.IMAGE_DIAGONAL
+    assert WarningCode.REFERENCE_FRAME_UNAVAILABLE in [w.code for w in result.warnings]
 
 
 def test_partial_reference_failure_discards_all_reference_coordinates(
@@ -166,7 +170,7 @@ def test_ordering_source_reset_and_long_gap(pipeline, packet):
     assert result.interactions
     result = pipeline.process(packet(100, timestamp=10))
     assert not result.detections[0].is_stable and not result.interactions
-    assert "temporal_history_reset" in result.warnings
+    assert WarningCode.TEMPORAL_HISTORY_RESET in [w.code for w in result.warnings]
     pipeline.reset()
     assert pipeline.process(packet(source="other")).status == ModuleStatus.OK
 
@@ -176,7 +180,10 @@ def test_frame_id_gaps_age_confirmation(pipeline, packet):
     pipeline.process(packet(1))
     result = pipeline.process(packet(3))
     assert not result.detections[0].is_stable
-    assert "source_frames_missing: 1" in result.warnings
+    assert any(
+        w.code == WarningCode.SOURCE_FRAME_MISSING and w.details["count"] == 1
+        for w in result.warnings
+    )
 
 
 def test_failed_initialization_closes_all_acquired_backends(config, packet, scene):

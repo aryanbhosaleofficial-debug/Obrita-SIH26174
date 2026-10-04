@@ -39,7 +39,7 @@ def test_near_far_multiple_hands_and_objects(scene):
     )
     assert len(rows) == 4
     assert rows[0].contact_candidate and rows[0].hand_contained
-    assert rows[0].coordinate_frame == CoordinateFrame.NORMALIZED_IMAGE
+    assert rows[0].coordinate_frame == CoordinateFrame.IMAGE_DIAGONAL
     assert not rows[1].near
     assert not rows[2].near
     assert not rows[3].near

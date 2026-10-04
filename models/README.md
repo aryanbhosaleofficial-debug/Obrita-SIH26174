@@ -1,7 +1,7 @@
 # Local hand model assets
 
 Place the compatible MediaPipe Hand Landmarker bundle at
-`models/hand_landmarker.task`, as referenced by `configs/perception.yaml`.
+`models/hand_landmarker.task`, as referenced by `configs/optimization.yaml`.
 Obtain it before offline deployment from the
 [official model page](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker#models).
 The module never downloads a model at runtime. `.task` files are git-ignored.

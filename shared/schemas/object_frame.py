@@ -13,7 +13,7 @@ Coordinate system:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal
 
 from shared.enums.module_status import ModuleStatus
 
@@ -26,32 +26,9 @@ TrackStatus = Literal["tentative", "confirmed", "lost", "reacquired"]
 # reacquired - matched again after being lost, same track_id
 
 
-@dataclass
-class DetectedObject:
-    class_name: str
-    # Class name as configured in configs/classes.yaml.
-
-    class_id: int
-    # Model class index.
-
-    confidence: float
-    # Detection confidence in [0.0, 1.0].
-
-    bbox_xyxy: BBoxXYXY
-    # Original-frame pixels.
-
-    track_id: Optional[int] = None
-    # Persistent id from the tracker; None if tracking is disabled / not yet assigned.
-
-    track_status: TrackStatus = "tentative"
-    track_quality: Optional[float] = None
-    # Tracker quality score in [0.0, 1.0]; definition documented in 02_yolo/README.md.
-
-    track_age_frames: int = 0
-    frames_since_seen: int = 0
-
-    is_stable: bool = False
-    # True only after multi-frame confirmation (02_yolo/stability/).
+# One normalized detection leaf; old import name remains an alias.
+from shared.diagnostics import Diagnostic
+from shared.schemas.observations import Detection as DetectedObject
 
 
 @dataclass
@@ -59,7 +36,7 @@ class ReferenceAnchor:
     anchor_role: str
     # Reference role from configs/classes.yaml, e.g. "rack" or "payload".
 
-    track_id: Optional[int]
+    track_id: int | None
     bbox_xyxy: BBoxXYXY
     # Original-frame pixels.
 
@@ -87,3 +64,8 @@ class ObjectFrame:
     # Empty when no anchor is visible. Never fabricated.
 
     status: ModuleStatus = ModuleStatus.OK
+    source_id: str = "camera_0"
+    session_id: str = "default"
+    warnings: list[Diagnostic] = field(default_factory=list)
+    notices: list[Diagnostic] = field(default_factory=list)
+    stage_timings_ms: dict[str, float] = field(default_factory=dict)

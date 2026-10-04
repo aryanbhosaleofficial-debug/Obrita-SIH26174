@@ -1,0 +1,4 @@
+# Explicit synthetic inference profile; no real weights.
+detector:
+  backend: mock
+  tracking: false

@@ -1,6 +1,9 @@
 # Module 04 — Boundary Detection Pipeline
 
-> Implementation status: **scaffold only**. Interfaces and responsibilities are defined; algorithms are not implemented.
+> Receiving contract implemented: `boundary.input.input_validator.validate_boundary_input` checks real
+> `OptimizationOutputPacket + FramePacket` metadata, identity and coordinate consistency.
+> Segmentation, contours and boundary evidence remain scaffolded. See
+> [the authoritative integration contract](../perception/INTEGRATION.md).
 
 ## Purpose
 
@@ -20,7 +23,7 @@ the two.
 ```text
 03 Optimization ──OptimizationOutputPacket──┐
                                             ▼
-01 Perception Core ──FramePacket (buffer)──► [04 Boundary] ──BoundaryOutputPacket──► 05 Perception Fusion
+External frame source ──FramePacket──► [04 Boundary] ──BoundaryOutputPacket──► 05 Perception Fusion
 ```
 
 ## Responsibilities

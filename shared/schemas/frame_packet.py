@@ -1,8 +1,8 @@
 """
 FramePacket — one captured frame plus its metadata.
 
-Originating module: Module 01 — Perception Core
-Consuming modules:  Module 02 (YOLO), Module 03 (pose/hands need the source image),
+Originating component: external camera / recorded-video frame source
+Consuming modules:  Module 01 foundation, Module 03 (hands need the source image),
                     Module 04 (boundary ROI needs the source image)
 
 The image is the ORIGINAL source frame. No module may modify it in place;
@@ -12,7 +12,7 @@ modules that need a resized / preprocessed version work on a copy.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from shared.enums.module_status import ModuleStatus
 
@@ -21,7 +21,7 @@ from shared.enums.module_status import ModuleStatus
 class FramePacket:
     # Required ---------------------------------------------------------------
     frame_id: int
-    # Strictly increasing per source, assigned at capture time, never reused.
+    # Strictly increasing per source/session, assigned at capture time.
 
     timestamp_s: float
     # Monotonic capture time in seconds (time.monotonic based). Use for ordering
@@ -42,7 +42,7 @@ class FramePacket:
     color_format: str = "BGR"
     # OpenCV default channel order.
 
-    wall_time_iso: Optional[str] = None
+    wall_time_iso: str | None = None
     # Human-readable capture time for logs only.
 
     dropped_frames_before: int = 0
@@ -51,3 +51,5 @@ class FramePacket:
     status: ModuleStatus = ModuleStatus.OK
     metadata: dict[str, Any] = field(default_factory=dict)
     # Free-form debug metadata. Do not put contract fields here.
+    session_id: str = "default"
+    # New source/session requires an explicit processing-chain reset.

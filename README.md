@@ -2,16 +2,14 @@
 
 **AI Human Activity Recognition for On-board BAS Experiments** — Smart India Hackathon prototype.
 
-> **Status: Module 01 perception implemented; the wider application remains a scaffold.**
-> The import-safe [`perception/`](perception/README.md) package provides a tested offline
-> frame-to-observation pipeline, mocks, YOLO/MediaPipe adapters and rack geometry.
-> No recognition accuracy or target-hardware FPS figures are claimed.
->
-> The requested Module 01 scope differs from the original five-module plan below.
-> See [`perception/INTEGRATION.md`](perception/INTEGRATION.md) for the explicit boundary
-> decision and existing `ObjectFrame` bridge. Numbered module scaffolds are preserved.
+> **Status: Module 01 foundation and the 01→02→03→04 receiving path are implemented.**
+> Module 01 owns shared contracts and frame preparation. YOLO adapters live in 02;
+> hands, calibration and interaction continuity live in 03. Boundary algorithms,
+> HAR, FSM and the wider application remain under their team owners.
+> See [perception/INTEGRATION.md](perception/INTEGRATION.md) for the single
+> authoritative boundary and [verification evidence](perception/VERIFICATION.md).
 
-Run the independent model-free module from the repository root:
+Run the model-free stage chain from the repository root:
 
 ```bash
 python -m pip install -r requirements-perception.txt
@@ -45,12 +43,12 @@ from video and compare it with the expected procedure, without depending on netw
 
 ## Architecture
 
-The original scaffold plan splits the system into five perception modules plus a separate Procedure FSM. Modules talk to each
+The current architecture splits the system into five perception modules plus a separate Procedure FSM. Modules talk to each
 other **only** through the shared packet schemas in `shared/schemas/`.
 
 | # | Module | Folder | Primary output |
 |---|--------|--------|----------------|
-| 01 | Perception Core | `01_perception_core/` | `FramePacket` |
+| 01 | Perception Core | `perception/` (`01_perception_core/` is a legacy pointer) | `PreparedFrame` |
 | 02 | YOLO | `02_yolo/` | `ObjectFrame` |
 | 03 | Optimization Sequence | `03_optimization/` | `SpatialFeaturePacket` (internal) → `OptimizationOutputPacket` |
 | 04 | Boundary Detection | `04_boundary/` | `BoundaryOutputPacket` |
@@ -66,46 +64,28 @@ The folders `01_perception_core` … `05_perception_fusion` keep the team's modu
 identifiers cannot start with a digit, so **these folders cannot be imported with a normal `import`
 statement** (e.g. `from 02_yolo import ...` is a syntax error).
 
-- In this scaffold they are organizational module containers; no code imports them.
-- `shared/` holds the authoritative cross-module contracts; the implemented Module 01
-  now has the normally importable `perception/` package.
-- The final loading strategy (e.g. `importlib` by path, or an import-safe package added later) is an
-  **open integration decision**. Folders must not be renamed without team agreement.
-- `tests/test_packet_contracts.py` fails if any file adds a `from 0X_...`/`import 0X_...` statement.
+- `perception/` implements the Module 01 frame foundation.
+- Import-safe `yolo`, `optimization`, and `boundary` packages locate code inside
+  numbered owner directories using package paths, without duplicating implementations.
+- `shared/` defines all stage packets and observation leaves exactly once.
+- Normal imports beginning with a digit remain invalid; contract tests enforce this.
 
 ## Main Pipeline
 
 ```text
-Camera
-   │
-   ▼
-01 — Perception Core ──────────────── FramePacket (source image via frame buffer) ──┐
-   │                                                                               │
-   ▼                                                                               │
-02 — YOLO ── ObjectFrame                                                           │
-   │                                                                               │
-   ▼                                                                               │
-03 — Optimization Sequence  ◄──────────────────────────────────────────────────────┤
-   │   Teammate 3 (spatial) ── SpatialFeaturePacket ──► Teammate 4 (temporal)       │
-   │                                                                               │
-   ├──────────────┐                                                                │
-   │              │                                                                │
-   ▼              ▼                                                                │
-Optimization   04 — Boundary Detection  ◄──────────────────────────────────────────┘
-Packet             │
-   │               ▼
-   │         Boundary Packet
-   │               │
-   └───────┬───────┘
-           ▼
-05 — Perception Fusion
-           │
-           ▼
-     Activity Event
-           │
-           ▼
-     Procedure FSM ──► correct / wrong-order / skipped step, next-step suggestion
+External Camera / Frame Source -> FramePacket (source preserved)
+  -> 01 FrameProcessor -> PreparedFrame
+  -> 02 YoloPipeline -> ObjectFrame
+  -> 03 OptimizationPipeline -> OptimizationOutputPacket
+                               (SpatialFeaturePacket + shared observations)
+  -> 04 boundary input validator -> boundary algorithm [scaffold]
+  -> 05 HAR / Perception Fusion [scaffold] -> ActivityEvent
+  -> Procedure FSM [scaffold]
 ```
+
+`integration.chain.PerceptionChain` composes 01–03. The runnable example calls
+Module 04's actual input validator; it does not claim completed boundary/HAR output.
+
 
 ## Module Ownership
 
@@ -124,7 +104,7 @@ Packet             │
 ```text
 SIH26174/
 ├── README.md, requirements.txt, .gitignore, main.py
-├── configs/               camera / yolo / optimization / boundary / fusion / classes (YAML placeholders)
+├── configs/               owner configs + demo/mock profiles; boundary/fusion/classes still contain placeholders
 ├── shared/                schemas/ (packet contracts), enums/, utils/
 ├── 01_perception_core/    camera/ synchronization/ pipeline/ buffering/ tests/
 ├── 02_yolo/               models/ inference/ preprocessing/ detection/ tracking/ stability/ reference/ output/ tests/
@@ -148,7 +128,8 @@ All packets are Python dataclasses in `shared/schemas/`:
 
 | Packet | From → To |
 |--------|-----------|
-| `FramePacket` | 01 → 02, 03, 04 |
+| `FramePacket` | External capture → 01; retained source for 03/04 |
+| `PreparedFrame` | 01 → 02/03 |
 | `ObjectFrame` | 02 → 03 (pass-through to 04, 05) |
 | `SpatialFeaturePacket` | 03 spatial → 03 temporal (pass-through to 04, 05) |
 | `OptimizationOutputPacket` | 03 → 04, 05 |
@@ -157,10 +138,11 @@ All packets are Python dataclasses in `shared/schemas/`:
 
 Common rules:
 
-- `frame_id` is assigned once by Module 01 and copied unchanged by every module.
+- `frame_id` is assigned once by the external source and copied unchanged by every module.
 - `timestamp_s` is a monotonic capture time in seconds, copied unchanged.
 - Image coordinates are pixels in the **original source frame** (never letterboxed).
-- Confidence values are in `[0.0, 1.0]`.
+- Known confidence values are in `[0.0, 1.0]`; unavailable components are `None`.
+- `source_id/session_id` namespace continuity; backend IDs and short-term keys differ.
 - Every packet carries a `ModuleStatus`.
 - Modules must not redefine their own versions of these packets; contract changes go through `shared/`
   and need review from all affected module owners.
@@ -267,7 +249,9 @@ must be benchmarked on the final demo hardware; no performance figures are claim
 
 | File | Used by |
 |------|---------|
-| `configs/camera.yaml` | Module 01 |
+| `configs/camera.yaml` | Future external capture application |
+| `configs/perception.yaml` | Module 01 preprocessing only |
+| `configs/perception_demo.yaml`, `configs/perception_mock.yaml` | Integration profiles referencing owner configs |
 | `configs/yolo.yaml` | Module 02 |
 | `configs/optimization.yaml` | Module 03 |
 | `configs/boundary.yaml` | Module 04 |
@@ -275,8 +259,9 @@ must be benchmarked on the final demo hardware; no performance figures are claim
 | `configs/classes.yaml` | Modules 02–05 |
 | `procedures/*.yaml` | Procedure FSM |
 
-Thresholds and tuning values are `null` placeholders. They must be chosen and validated on the team's
-own demo setup; none of them is a validated value yet. Paths are relative to the repository root.
+Module 01–03 thresholds are explicit configurable demonstration parameters, not validated physical
+constants. Class IDs and wider boundary/fusion settings still contain placeholders. Owner model paths
+resolve relative to the owning YAML file; integration profiles contain paths rather than duplicate settings.
 
 ## Installation
 
@@ -305,7 +290,7 @@ After installation, the system must run without network access.
 Run from the repository root (each script is currently a placeholder that exits with a non-zero status):
 
 ```bash
-python scripts/run_camera.py         # Module 01
+python scripts/run_camera.py         # Future external capture application
 python scripts/run_yolo.py           # Modules 01-02
 python scripts/run_optimization.py   # Modules 01-03
 python scripts/run_boundary.py       # Modules 01-04
@@ -332,8 +317,8 @@ Run with `python -m pytest` from the repository root so that `shared` is importa
 
 - `tests/test_packet_contracts.py` contains real checks of the shared contracts and of the
   numbered-folder import rule. These pass on the scaffold.
-- All other tests are **skipped placeholders** that list the cases to implement. They are skipped,
-  not faked; removing the skip marker makes them fail until implemented.
+- `tests/perception/` exercises active core, owner-stage, backend and reviewer regressions.
+- The 120 existing scaffold tests remain skipped; see the verification record for actual counts.
 
 ## Offline Requirement
 
@@ -349,8 +334,8 @@ Run with `python -m pytest` from the repository root so that `shared` is importa
 In microgravity there is no reliable "up". The operator may be oriented arbitrarily relative to the
 camera, so camera-image "up" is not a meaningful reference.
 
-- Module 02 detects rack/payload **reference anchors**.
-- Module 03 builds a `RackReference` (origin + axes) and expresses landmarks, motion and orientation
+- Module 03 detects configured ArUco markers, or accepts manual calibration. Module 02 may separately detect rack/context objects.
+- Module 03 publishes `ReferenceFrameInfo` (provenance, verification, transform and axes) and expresses landmarks, motion and orientation
   **relative to the rack/payload**.
 - Module 04 measures boundary orientation relative to the same reference.
 - If no valid reference exists, rack-relative outputs are marked invalid — there is no silent fallback
@@ -383,9 +368,9 @@ are in normalized / rack-relative units unless calibrated depth or stereo is add
 ## Known Limitations
 
 - The wider numbered module/application pipeline remains scaffolded. The independent
-  Module 01 perception package is implemented; see its README and verification record.
-- No trained models, datasets or measured results exist in this repository yet.
+  frame foundation and 02/03 adapter/geometry path are implemented; see the verification record.
+- Trained experiment YOLO weights, real-scene evaluation and target-hardware performance evidence are absent.
 - Monocular camera: relative depth only.
 - Colour segmentation is sensitive to lighting.
-- The import/loading strategy for numbered module folders is still to be decided.
+- Numbered owner code is exposed through import-safe package locators; packaging outside the repository is not configured.
 - Procedure definitions are examples, not real experiment procedures.
