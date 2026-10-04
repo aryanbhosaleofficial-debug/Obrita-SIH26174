@@ -1,43 +1,55 @@
-"""
-Tests for detection filtering and validation (Module 02).
+"""Active detection regressions replacing the five original skipped placeholders."""
 
-Implementation status:
-    Scaffold only. Every test below is skipped until the component exists.
-    Remove the module-level skip marker when implementing the tests.
-
-Required test cases:
-1. Detections below the configured threshold are removed.
-2. Classes not allowed in configuration are removed.
-3. Zero-area and non-finite boxes are rejected.
-4. No detections still produce a valid, empty ObjectFrame.
-5. Missing model file raises a clear error and never triggers a download.
-"""
+import socket
+from dataclasses import replace
 
 import pytest
+from yolo.inference.detector import UltralyticsYoloDetector
+from yolo.pipeline import YoloPipeline
 
-pytestmark = pytest.mark.skip(reason="Scaffold only: implementation pending")
-
-
-def test_confidence_threshold_filtering():
-    """Detections below the configured threshold are removed."""
-    raise NotImplementedError("Test not written yet")
-
-
-def test_disallowed_classes_removed():
-    """Classes not allowed in configuration are removed."""
-    raise NotImplementedError("Test not written yet")
+from shared.config import DetectorConfig
+from shared.enums.module_status import ModuleStatus
+from shared.errors import InitializationError
+from shared.schemas.observations import BoundingBox
 
 
-def test_invalid_boxes_rejected():
-    """Zero-area and non-finite boxes are rejected."""
-    raise NotImplementedError("Test not written yet")
+def test_confidence_threshold_filtering(prepared, backend, detection):
+    stage = YoloPipeline(
+        DetectorConfig(confidence_threshold=0.8),
+        backend(
+            [[replace(detection, confidence=0.79), replace(detection, confidence=0.8)]]
+        ),
+    )
+    assert [d.confidence for d in stage.process(prepared()).detections] == [0.8]
 
 
-def test_empty_detections_valid_object_frame():
-    """No detections still produce a valid, empty ObjectFrame."""
-    raise NotImplementedError("Test not written yet")
+def test_disallowed_classes_removed(prepared, backend, detection):
+    stage = YoloPipeline(
+        DetectorConfig(class_whitelist=[1]),
+        backend([[detection, replace(detection, class_id=1, class_name="tool")]]),
+    )
+    assert [d.class_name for d in stage.process(prepared()).detections] == ["tool"]
 
 
-def test_missing_model_file_clear_error():
-    """Missing model file raises a clear error and never triggers a download."""
-    raise NotImplementedError("Test not written yet")
+def test_invalid_boxes_rejected(prepared, backend, detection):
+    rows = [
+        replace(detection, bbox=BoundingBox(1, 1, 1, 2)),
+        replace(detection, bbox=BoundingBox(1, 1, 2, float("inf"))),
+    ]
+    output = YoloPipeline(DetectorConfig(), backend([rows])).process(prepared())
+    assert output.status == ModuleStatus.DEGRADED and output.detections == []
+
+
+def test_empty_detections_valid_object_frame(prepared, backend):
+    output = YoloPipeline(DetectorConfig(), backend()).process(prepared())
+    assert output.status == ModuleStatus.NO_DETECTION and output.detections == []
+
+
+def test_missing_model_file_clear_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        socket.socket, "connect", lambda *a: pytest.fail("network attempted")
+    )
+    with pytest.raises(InitializationError, match="not found"):
+        UltralyticsYoloDetector(
+            DetectorConfig(model_path=tmp_path / "missing.pt")
+        ).initialize()

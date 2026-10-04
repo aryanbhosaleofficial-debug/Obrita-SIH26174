@@ -1,0 +1,4 @@
+# Local verification caches and temporary test/model assets.
+.verification/
+.mypy_cache/
+.ruff_cache/

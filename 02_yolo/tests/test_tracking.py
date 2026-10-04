@@ -1,9 +1,11 @@
 """
 Tests for tracking (Module 02).
 
-Implementation status:
-    Scaffold only. Every test below is skipped until the component exists.
-    Remove the module-level skip marker when implementing the tests.
+Historical real-scene tracker evaluation placeholders, retained explicitly.
+    Tracking is delegated to the configured Ultralytics tracker. These scenarios
+    need labelled footage and an agreed backend evaluation criterion; they do
+    not establish a public track-status/quality contract. Adapter identity,
+    reset and lifecycle plumbing are covered in the active backend/stage tests.
 
 Required test cases:
 1. Same object keeps the same track_id across consecutive frames.
@@ -15,7 +17,9 @@ Required test cases:
 
 import pytest
 
-pytestmark = pytest.mark.skip(reason="Scaffold only: implementation pending")
+pytestmark = pytest.mark.skip(
+    reason="Historical tracker scenario evaluation: labelled footage unavailable"
+)
 
 
 def test_track_id_persistent():

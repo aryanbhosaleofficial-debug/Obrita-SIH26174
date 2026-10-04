@@ -6,19 +6,22 @@ import logging
 import os
 from dataclasses import replace
 from importlib.util import find_spec
+from numbers import Real
+from threading import RLock
 from typing import Any, Protocol
 
 import numpy as np
 import yaml
+from yolo.config import validate_config, validate_tracker
+from yolo.inference.postprocess import parse_results
 
 from shared.config import DetectorConfig
+from shared.diagnostics import Diagnostic, WarningCode
+from shared.errors import InitializationError
 from shared.schemas.observations import BoundingBox, Detection
 from shared.utils.observation import valid_score
 
 LOGGER = logging.getLogger(__name__)
-
-
-from shared.errors import InitializationError
 
 
 class ObjectDetector(Protocol):
@@ -41,14 +44,27 @@ class NullDetector:
 
 
 def filter_detections(
-    detections: list[Detection], shape: tuple[int, int], config: DetectorConfig
+    detections: list[Detection],
+    shape: tuple[int, int],
+    config: DetectorConfig,
+    diagnostics: list[Diagnostic] | None = None,
 ) -> tuple[list[Detection], int]:
-    """Threshold, whitelist, finite/positive box validation and source clipping."""
+    """Threshold, whitelist, finite/positive boxes and diagnostic input clipping.
+
+    Partially outside boxes are intersected with the input image and reported;
+    wholly outside boxes are rejected. Output geometry uses Python floats.
+    """
     height, width = shape
     output = []
     invalid = 0
+    clipped = 0
     seen_tracks: set[int] = set()
     for detection in detections:
+        if not isinstance(detection, Detection) or not isinstance(
+            detection.bbox, BoundingBox
+        ):
+            invalid += 1
+            continue
         b = detection.bbox
         if (
             not valid_score(detection.confidence)
@@ -57,7 +73,12 @@ def filter_detections(
             or detection.class_id < 0
             or not isinstance(detection.class_name, str)
             or not detection.class_name
-            or not np.isfinite([b.x1, b.y1, b.x2, b.y2]).all()
+            or not all(
+                isinstance(v, Real)
+                and not isinstance(v, (bool, np.bool_))
+                and np.isfinite(v)
+                for v in (b.x1, b.y1, b.x2, b.y2)
+            )
             or b.x2 <= b.x1
             or b.y2 <= b.y1
             or (
@@ -75,10 +96,10 @@ def filter_detections(
         ):
             continue
         box = BoundingBox(
-            max(0.0, min(width, b.x1)),
-            max(0.0, min(height, b.y1)),
-            max(0.0, min(width, b.x2)),
-            max(0.0, min(height, b.y2)),
+            float(max(0.0, min(width, b.x1))),
+            float(max(0.0, min(height, b.y1))),
+            float(max(0.0, min(width, b.x2))),
+            float(max(0.0, min(height, b.y2))),
         )
         if box.x2 <= box.x1 or box.y2 <= box.y1:
             invalid += 1
@@ -88,7 +109,19 @@ def filter_detections(
                 invalid += 1
                 continue
             seen_tracks.add(detection.track_id)
-        output.append(replace(detection, bbox=box))
+        clipped += box != b
+        output.append(
+            replace(detection, bbox=box, confidence=float(detection.confidence))
+        )
+    if clipped and diagnostics is not None:
+        diagnostics.append(
+            Diagnostic(
+                WarningCode.INVALID_OBSERVATION,
+                {"stage": "detector", "clipped_count": clipped},
+            )
+        )
+    if invalid or clipped:
+        LOGGER.debug("YOLO observations rejected=%s clipped=%s", invalid, clipped)
     return output, invalid
 
 
@@ -96,23 +129,32 @@ class UltralyticsYoloDetector:
     """Lazy model instance; requires existing .pt or .onnx path, never downloads.
 
     Optional tracking requires a local tracker YAML with ReID disabled. The
-    pipeline binds a single source and close/reinitialize resets tracker state.
+    stage binds a single stream; upstream reset signals clear tracker history
+    without reloading model weights.
     CPU fallback is permitted only for accelerator-related failures.
     """
 
     def __init__(self, config: DetectorConfig):
-        self.config = config
+        self.config = validate_config(config)
+        self._lock = RLock()
         self._model: Any = None
         self._device = "cpu"
-        self._warnings: list[str] = []
+        self._warnings: list[str | Diagnostic] = []
+        self._class_names: dict[int, str] | None = None
 
-    def pop_warnings(self) -> list[str]:
-        warnings, self._warnings = self._warnings, []
-        return warnings
+    def pop_warnings(self) -> list[str | Diagnostic]:
+        with self._lock:
+            warnings, self._warnings = self._warnings, []
+            return warnings
 
     def initialize(self) -> None:
+        with self._lock:
+            self._initialize()
+
+    def _initialize(self) -> None:
         if self._model is not None:
             return
+        self._warnings.clear()
         path = self.config.model_path
         if path is None or not path.is_file():
             raise InitializationError(
@@ -128,8 +170,13 @@ class UltralyticsYoloDetector:
                 raise InitializationError(
                     "tracking requires an existing local tracker_path YAML"
                 )
-            with tracker_path.open(encoding="utf-8") as stream:
-                tracker = yaml.safe_load(stream)
+            try:
+                with tracker_path.open(encoding="utf-8") as stream:
+                    tracker = yaml.safe_load(stream)
+            except (OSError, yaml.YAMLError) as exc:
+                raise InitializationError(
+                    f"cannot read local tracker YAML {tracker_path}: {exc}"
+                ) from exc
             if (
                 not isinstance(tracker, dict)
                 or tracker.get("tracker_type") not in ("bytetrack", "botsort")
@@ -153,6 +200,8 @@ class UltralyticsYoloDetector:
                 raise InitializationError(
                     "tracking requires local lap>=0.5.12; install requirements-perception-inference.txt before offline use"
                 )
+            if self.config.tracking:
+                validate_tracker(tracker)
             # Ultralytics reads these flags at import time. Require callers that
             # already imported it to use the same offline policy, instead of
             # monkey-patching process-global library state.
@@ -170,6 +219,11 @@ class UltralyticsYoloDetector:
                 raise InitializationError(
                     "Ultralytics auto-install is enabled; launch with YOLO_AUTOINSTALL=false and YOLO_OFFLINE=true before importing it"
                 )
+            if getattr(checks, "ONLINE", False):
+                raise InitializationError(
+                    "Ultralytics was imported with online checks enabled; restart with "
+                    "YOLO_OFFLINE=true before importing it"
+                )
             if path.suffix.lower() == ".onnx":
                 import onnxruntime  # noqa: F401 -- never install it at runtime
             requested = self.config.device
@@ -181,9 +235,18 @@ class UltralyticsYoloDetector:
                 self._device = "0" if cuda_available else "cpu"
             elif requested == "cpu":
                 self._device = "cpu"
-            elif (requested == "mps" and mps_available) or (
-                requested != "mps" and cuda_available
-            ):
+            elif requested == "mps" and mps_available:
+                self._device = requested
+            elif requested != "mps" and cuda_available:
+                count = (
+                    torch.cuda.device_count()
+                    if hasattr(torch.cuda, "device_count")
+                    else 1
+                )
+                if int(requested) >= count:
+                    raise InitializationError(
+                        f"CUDA device {requested} does not exist; {count} local devices available"
+                    )
                 self._device = requested
             elif self.config.cpu_fallback:
                 self._device = "cpu"
@@ -193,15 +256,24 @@ class UltralyticsYoloDetector:
                     f"requested accelerator unavailable: {requested}"
                 )
             self._model = YOLO(str(path), task="detect")
+            # Exported models may initialize a backend while reading names.
+            # Make that initialization use the selected device as well.
+            if isinstance(getattr(self._model, "overrides", None), dict):
+                self._model.overrides["device"] = self._device
             validate_model_classes(self._model.names, expected_classes)
+            self._class_names = expected_classes
             LOGGER.info(
                 "YOLO initialized with local model %s on %s", path, self._device
             )
         except InitializationError:
             self._model = None
+            self._class_names = None
+            self._warnings.clear()
             raise
         except Exception as exc:
             self._model = None
+            self._class_names = None
+            self._warnings.clear()
             raise InitializationError(f"YOLO initialization failed: {exc}") from exc
 
     def _infer(self, image: np.ndarray):
@@ -221,6 +293,10 @@ class UltralyticsYoloDetector:
         return self._model.predict(**kwargs)
 
     def detect(self, image: np.ndarray) -> list[Detection]:
+        with self._lock:
+            return self._detect(image)
+
+    def _detect(self, image: np.ndarray) -> list[Detection]:
         if self._model is None:
             self.initialize()
         try:
@@ -247,34 +323,30 @@ class UltralyticsYoloDetector:
                 self._model.to("cpu")
             self._warnings.append("detector_cpu_fallback")
             results = self._infer(image)
-        output = []
-        for result in results:
-            boxes = result.boxes
-            if boxes is None:
-                continue
-            coordinates = boxes.xyxy.cpu().numpy()
-            scores = boxes.conf.cpu().numpy()
-            classes = boxes.cls.cpu().numpy()
-            ids = (
-                boxes.id.cpu().numpy()
-                if self.config.tracking and boxes.id is not None
-                else None
-            )
-            for index, (coords, score, class_id) in enumerate(
-                zip(coordinates, scores, classes)
-            ):
-                cid = int(class_id)
-                output.append(
-                    Detection(
-                        cid,
-                        str(result.names[cid]),
-                        float(score),
-                        BoundingBox(*(float(v) for v in coords)),
-                        int(ids[index]) if ids is not None else None,
-                    )
+        output, invalid = parse_results(
+            results, image.shape[:2], self._class_names, self.config.tracking
+        )
+        if invalid:
+            self._warnings.append(
+                Diagnostic(
+                    WarningCode.INVALID_OBSERVATION,
+                    {"stage": "yolo_result", "count": invalid},
                 )
+            )
         return output
 
+    def reset_tracking(self) -> None:
+        """Reset backend tracker histories without reloading local model weights."""
+        with self._lock:
+            predictor = getattr(self._model, "predictor", None)
+            for tracker in getattr(predictor, "trackers", ()):
+                tracker.reset()
+            if predictor is not None and hasattr(predictor, "vid_path"):
+                predictor.vid_path = [None] * len(predictor.vid_path)
+            self._warnings.clear()
+
     def close(self) -> None:
-        self._model = None
-        self._warnings.clear()
+        with self._lock:
+            self._model = None
+            self._class_names = None
+            self._warnings.clear()
