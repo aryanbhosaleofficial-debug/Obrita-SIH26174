@@ -1,5 +1,31 @@
 # Module 04 — Boundary Detection Pipeline
 
+The executable baseline is `boundary_pipeline.BoundaryPipeline.process(frame, frame_id, timestamp, hand_data=None)`.
+All contour and centroid coordinates returned by the pipeline are in original-frame pixels.
+
+For the integrated flow, Module 02/03 should call
+`BoundaryPipeline.process_detections(..., person_bbox=..., object_bbox=...)`.
+Module 04 consumes these boxes; it does not run a second person/object detector:
+
+```text
+Camera → YOLO → person/object boxes → target-specific ROI → segmentation
+       → correct contour → boundary features/chain code → Module 05 fusion
+```
+
+| Stage | Input → output | Failure result |
+|---|---|---|
+| Input | frame + metadata → validated copy | invalid packet with reason |
+| ROI | frame + ROI → clamped crop + offset | invalid packet |
+| Preprocessing | crop → optional blur/normalization | empty crop |
+| Segmentation | ROI → uint8 binary mask | empty mask / no contour |
+| Contour | mask → candidates → selected contour | `NO_BOUNDARY` |
+| Chain code | contour → normalized 8-direction code | empty code |
+| Features | contour + code → geometry and shape descriptors | zero-valued features |
+| Hand interaction | hand points + contour → proximity evidence | `available: false` |
+| Temporal | current boundary → bounded track | missed/untracked result |
+| Quality | intermediate results → confidence/status | `UNCERTAIN` or `NO_BOUNDARY` |
+| Output | all evidence → `BoundaryOutputPacket` | degraded packet with reasons |
+
 ## Overview
 
 ```text

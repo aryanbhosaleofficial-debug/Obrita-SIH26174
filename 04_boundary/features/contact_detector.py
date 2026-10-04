@@ -14,4 +14,8 @@ Owner:
     Module 04 — Boundary Detection
 """
 
-# TODO: Produce evidence only; do not decide procedure correctness.
+from __future__ import annotations
+
+def detect_contact(interaction):
+    if not interaction or not interaction.get("available"): return {"contact": False, "confidence": 0.0, "available": False}
+    return {"contact": bool(interaction.get("near_boundary")), "confidence": float(interaction.get("contact_proxy", 0.0)), "available": True}

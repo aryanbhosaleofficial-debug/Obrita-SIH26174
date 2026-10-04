@@ -1,5 +1,14 @@
 # Definition of Done — Module 04 Boundary Detection
 
+## Baseline implementation status
+
+The frame-based pipeline is implemented in `boundary_pipeline.py`. It validates input,
+clamps ROI coordinates, preprocesses a copy, segments using threshold/adaptive/Canny
+options, extracts and validates contours, emits an 8-connected Freeman code, computes
+geometry and hand proximity, tracks a bounded history, evaluates quality, and builds
+the shared `BoundaryOutputPacket`. Empty or invalid input is represented explicitly
+with failure reasons; it is never reported as a successful detection.
+
 ## Functional Requirements
 
 - [ ] `OptimizationOutputPacket` is paired with the source frame by `frame_id`.

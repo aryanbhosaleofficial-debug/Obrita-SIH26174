@@ -1,6 +1,6 @@
 # Module 04 — Boundary Detection Pipeline
 
-> Implementation status: **scaffold only**. Interfaces and responsibilities are defined; algorithms are not implemented.
+> Implementation status: **implemented baseline**. The module is independently runnable on NumPy/OpenCV frames and publishes the shared boundary packet.
 
 ## Purpose
 
@@ -264,10 +264,17 @@ python -m pytest 04_boundary/tests
 | `test_boundary_tracking.py` | Stationary / moving / rotating synthetic objects, confirmation |
 | `test_boundary_packet.py` | Metadata copy, shared schema, cross-check, quality reasons |
 
-All tests are currently skipped placeholders. Chain-code tests should use synthetic shapes with
-known answers so they can be verified exactly.
+The executable baseline is covered by the chain-code tests and can be exercised directly with
+`boundary_pipeline.BoundaryPipeline`. The remaining legacy scaffold tests document additional
+synthetic-shape cases for future demo-specific tuning.
 
 ## Integration Contract
+
+The intended runtime path is `Camera → YOLO → Person BBox/Object BBox → Module 04`.
+Module 04 accepts upstream detections through `BoundaryPipeline.process_detections`.
+The object box defines the target-specific ROI, while the person box is preserved as
+association context. Module 04 does not create another YOLO detector. Its output is
+the boundary evidence consumed by `05_perception_fusion`.
 
 - `frame_id`, `timestamp_s`, `target_track_id` copied **unchanged** from `OptimizationOutputPacket`.
 - `contour_px`, `centroid_px` are original source-frame pixels.
