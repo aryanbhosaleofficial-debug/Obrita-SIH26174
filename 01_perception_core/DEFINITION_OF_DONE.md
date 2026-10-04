@@ -1,5 +1,9 @@
 # Definition of Done — Module 01 Perception Core
 
+> Historical checklist for the original camera/orchestration scope, which is outside
+> the requested perception-only implementation. The implemented Module 01 checklist
+> and verification evidence are in [perception/VERIFICATION.md](../perception/VERIFICATION.md).
+
 ## Functional Requirements
 
 - [ ] Frames can be captured from a live camera selected in `configs/camera.yaml`.

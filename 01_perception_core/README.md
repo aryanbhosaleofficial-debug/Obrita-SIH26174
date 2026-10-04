@@ -1,6 +1,10 @@
 # Module 01 — SIH26174 Perception Core
 
-> Implementation status: **scaffold only**. Interfaces and responsibilities are defined; algorithms are not implemented.
+> **Historical camera/orchestration scaffold:** the original plan below differs from
+> the requested frame-to-observation Module 01 scope. The implemented module lives in
+> [`perception/`](../perception/README.md); see its
+> [integration decision](../perception/INTEGRATION.md). The camera, queue and main
+> orchestration placeholders in this directory are preserved and remain unimplemented.
 
 ## Purpose
 

@@ -19,6 +19,7 @@ Common conventions for every packet:
 from shared.schemas.activity_event import ActivityEvent
 from shared.schemas.boundary_packet import BoundaryOutputPacket
 from shared.schemas.frame_packet import FramePacket
+from shared.schemas.perception_frame_result import PerceptionFrameResult
 from shared.schemas.object_frame import DetectedObject, ObjectFrame, ReferenceAnchor
 from shared.schemas.optimization_packet import (
     GestureResult,
@@ -38,6 +39,7 @@ __all__ = [
     "BoundaryOutputPacket",
     "DetectedObject",
     "FramePacket",
+    "PerceptionFrameResult",
     "GestureResult",
     "HandLandmarks",
     "InteractionCandidate",

@@ -2,9 +2,22 @@
 
 **AI Human Activity Recognition for On-board BAS Experiments** — Smart India Hackathon prototype.
 
-> **Status: repository scaffold.** Module structure, shared data contracts, configuration
-> placeholders and documentation exist. The perception algorithms are **not implemented yet**.
-> No accuracy, FPS or latency figures exist for this project yet, and none are claimed.
+> **Status: Module 01 perception implemented; the wider application remains a scaffold.**
+> The import-safe [`perception/`](perception/README.md) package provides a tested offline
+> frame-to-observation pipeline, mocks, YOLO/MediaPipe adapters and rack geometry.
+> No recognition accuracy or target-hardware FPS figures are claimed.
+>
+> The requested Module 01 scope differs from the original five-module plan below.
+> See [`perception/INTEGRATION.md`](perception/INTEGRATION.md) for the explicit boundary
+> decision and existing `ObjectFrame` bridge. Numbered module scaffolds are preserved.
+
+Run the independent model-free module from the repository root:
+
+```bash
+python -m pip install -r requirements-perception.txt
+python -m examples.perception_demo
+python -m pytest tests/perception -q
+```
 
 ## Project Overview
 
@@ -32,7 +45,7 @@ from video and compare it with the expected procedure, without depending on netw
 
 ## Architecture
 
-The system is split into five perception modules plus a separate Procedure FSM. Modules talk to each
+The original scaffold plan splits the system into five perception modules plus a separate Procedure FSM. Modules talk to each
 other **only** through the shared packet schemas in `shared/schemas/`.
 
 | # | Module | Folder | Primary output |
@@ -54,7 +67,8 @@ identifiers cannot start with a digit, so **these folders cannot be imported wit
 statement** (e.g. `from 02_yolo import ...` is a syntax error).
 
 - In this scaffold they are organizational module containers; no code imports them.
-- `shared/` is the only normally importable package used across modules.
+- `shared/` holds the authoritative cross-module contracts; the implemented Module 01
+  now has the normally importable `perception/` package.
 - The final loading strategy (e.g. `importlib` by path, or an import-safe package added later) is an
   **open integration decision**. Folders must not be renamed without team agreement.
 - `tests/test_packet_contracts.py` fails if any file adds a `from 0X_...`/`import 0X_...` statement.
@@ -368,7 +382,8 @@ are in normalized / rack-relative units unless calibrated depth or stereo is add
 
 ## Known Limitations
 
-- Scaffold only: no perception algorithm is implemented yet.
+- The wider numbered module/application pipeline remains scaffolded. The independent
+  Module 01 perception package is implemented; see its README and verification record.
 - No trained models, datasets or measured results exist in this repository yet.
 - Monocular camera: relative depth only.
 - Colour segmentation is sensitive to lighting.
