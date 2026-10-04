@@ -59,9 +59,9 @@ The existing repository `configs/yolo.yaml` and its class-map expectations are p
 From the repository root:
 
 ```powershell
-python -m yolo --source 0
-python -m yolo --source demo.mp4
-python -m yolo --source test.jpg
+.\.venv\Scripts\python.exe -m 02_yolo --source 0
+.\.venv\Scripts\python.exe -m 02_yolo --source demo.mp4
+.\.venv\Scripts\python.exe -m 02_yolo --source test.jpg
 python -m yolo --source demo.mp4 --vlm
 python -m yolo --source demo.mp4 --no-vlm --output annotated.mp4 --jsonl results.jsonl
 python -m yolo --source test.jpg --no-display --output annotated.png
@@ -86,12 +86,10 @@ The copied directory needs no top-level `yolo/` alias, Module 01, Module 03, sha
 ```python
 from yolo.config import load_config
 from yolo.pipeline import YoloPipeline
-from yolo.semantic.contracts import SemanticConfig
 
 # prepared is the existing Module 01 PreparedFrame.
 with YoloPipeline(
     load_config("02_yolo/config/standalone.yaml"),
-    semantic_config=SemanticConfig(enabled=True),
 ) as module02:
     objects = module02.process(prepared)  # exact shared ObjectFrame
     downstream = module03.process(prepared, objects)  # existing Module 03 API
@@ -99,7 +97,7 @@ with YoloPipeline(
     semantic = module02.semantic_result  # may be None / old event
 ```
 
-Real applications keep the pipeline alive across frames rather than opening it for each frame. Semantics default to disabled; enabling it does not alter `process()`'s return type. Module 03 receives the clean prepared/source frame and `ObjectFrame`. It never receives annotated pixels or Qwen output during this task. A custom backend injected into `YoloPipeline` must return **shared.schemas.observations.Detection** leaves with shared BoundingBox types; its diagnostics must use shared contracts too. Module-private core leaves belong to DetectorPipeline/standalone and are rejected at the SIH boundary with INVALID_OBSERVATION diagnostics. This does not weaken leaf validation or modify shared schemas.
+Real applications keep the pipeline alive across frames rather than opening it for each frame. Semantics are enabled by default in standalone and SIH mode; use `--no-vlm` or `SemanticConfig(enabled=False)` to disable them. This does not alter `process()`'s return type. Module 03 receives the clean prepared/source frame and `ObjectFrame`. It never receives annotated pixels or Qwen output during this task. A custom backend injected into `YoloPipeline` must return **shared.schemas.observations.Detection** leaves with shared BoundingBox types; its diagnostics must use shared contracts too. Module-private core leaves belong to DetectorPipeline/standalone and are rejected at the SIH boundary with INVALID_OBSERVATION diagnostics. This does not weaken leaf validation or modify shared schemas.
 
 Callers own `cv2.imshow` or video writing in integrated mode. No Module 01 rendering hook is required.
 
@@ -116,14 +114,14 @@ Install Ollama separately and download its model explicitly during setup:
 ```powershell
 ollama pull qwen3-vl:2b-instruct
 ollama serve
-python -m yolo --source 0 --vlm
+.\.venv\Scripts\python.exe -m 02_yolo --source 0
 ```
 
 An already running local Ollama service does not need a second `serve`. After dependencies and models are installed, internet may be disconnected. The default host is `http://localhost:11434` and default model `qwen3-vl:2b-instruct`. Override with `--ollama-host`, `--vlm-model`, or `--semantic-config 02_yolo/config/semantic.yaml`. Only HTTP loopback hosts are allowed, proxies/redirects are disabled, and cloud aliases are rejected. Runtime calls `/api/tags` and `/api/chat`; it never calls a pull endpoint. There is no OpenAI, Claude, Gemini, remote Qwen or other cloud API.
 
 The adapter follows Ollama's official [chat API](https://docs.ollama.com/api/chat), [local model listing](https://docs.ollama.com/api/tags), and [structured outputs](https://docs.ollama.com/capabilities/structured-outputs) contracts.
 
-Availability is checked on first VLM event in the background, with retry caching (10 seconds by default). States distinguish `DISABLED`, `WAITING` (no chronological event yet), `BUSY`, `READY`, `MODEL_MISSING`, `OLLAMA_UNAVAILABLE`, `VLM_ERROR` and `VLM_PARSE_ERROR`. A connection error/timeout, missing model or parse failure emits `UNCERTAIN` with its own semantic failure status. **YOLO, tracking, ObjectFrame and rendering continue.** There is no automatic download or daemon startup.
+Availability is checked automatically at startup on the existing background worker, without blocking YOLO or submitting a semantic event, with retry caching (10 seconds by default). States distinguish `DISABLED`, `WAITING` (availability pending or semantic state reset), `BUSY`, `READY`, `MODEL_MISSING`, `OLLAMA_UNAVAILABLE`, `VLM_ERROR` and `VLM_PARSE_ERROR`. A connection error/timeout, missing model or parse failure emits `UNCERTAIN` with its own semantic failure status. **YOLO, tracking, ObjectFrame and rendering continue.** There is no automatic download or daemon startup.
 
 ### Event sampling and worker bounds
 
@@ -133,7 +131,7 @@ The explainable trigger checks **direction-independent** object-center displacem
 
 There is one daemon worker and at most **one pending/in-flight event**, with no frame backlog. Events are skipped while busy, and fresh frames continue through YOLO. Default HTTP timeout is 30 seconds; response size is capped at 1 MiB. `context_tokens: 16384` is explicit because four images exceeded the installed Ollama default 4096-token context during verification. Larger settings may consume more RAM. No performance guarantee is made.
 
-A single still image does not automatically request a temporal action label; it normally shows `WAITING` when VLM is enabled. A short video can finish before its VLM event completes. Shutdown discards those results instead of delaying the detector loop. Long live sessions show completed events on following frames.
+A single still image does not automatically request a temporal action label. Its VLM status is `WAITING` while the startup probe is pending, then the actual availability status (for example `READY` or `OLLAMA_UNAVAILABLE`); `READY` does not imply an action was inferred. A short video can finish before its VLM event completes. Shutdown discards those results instead of delaying the detector loop. Long live sessions show completed events on following frames.
 
 ### Semantic contract and validation
 

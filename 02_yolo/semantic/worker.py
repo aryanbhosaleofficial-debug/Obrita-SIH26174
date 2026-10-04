@@ -74,6 +74,30 @@ class SemanticWorker:
             return True
 
     def _run(self):
+        # Probe the existing local verifier on this worker, never the YOLO
+        # thread. Availability is not semantic inference and creates no event.
+        check = getattr(self.verifier, "check_availability", None)
+        if callable(check):
+            with self._condition:
+                generation = self._generation
+            try:
+                with self.verifier_lock:
+                    with self._condition:
+                        if self._closed:
+                            return
+                    status = check()
+                if not isinstance(status, SemanticStatus):
+                    raise TypeError("verifier violated status contract")
+            except Exception:  # noqa: BLE001 -- optional availability failure
+                status = SemanticStatus.VLM_ERROR
+            with self._condition:
+                if (
+                    generation == self._generation
+                    and not self._closed
+                    and not self._busy
+                ):
+                    self._status = status
+                self._condition.notify_all()
         while True:
             with self._condition:
                 self._condition.wait_for(
