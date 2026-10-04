@@ -1,279 +1,194 @@
-# Module 02 - YOLO object detection
+# Module 02 ? Object & Semantic Perception
 
-Module 02 converts the canonical PreparedFrame from Module 01 into the canonical
-ObjectFrame consumed by Module 03. This is an offline prototype architecture
-intended to demonstrate the SIH26174 concept. It contains no activity, procedure,
-boundary, GUI or gravity-direction reasoning.
+Module 02 performs offline YOLO object detection and optional tracking, supplies the unchanged SIH `ObjectFrame` to Module 03, and provides annotated images/video as a side output. Optional local Qwen3-VL produces **semantic candidates**, never procedure decisions or ground truth. Module 01, Module 03 and shared wire contracts are unchanged.
+
+## Implemented architecture
 
 ```text
-External source -> FramePacket -> Module 01 FrameProcessor
-                                      |
-                                PreparedFrame
-                                      |
-              MODULE 02: yolo.pipeline.YoloPipeline
-                Check prepared image / restoration scale
-                                      |
-             Ultralytics model adaptation + local inference
-                  (optional configured backend tracker)
-                                      |
-              Result parsing -> canonical Detection leaves
-                                      |
-               Confidence / class filter + box validation
-                                      |
-                 PreparedFrame.source_detection (once)
-                                      |
-                        Original-pixel ObjectFrame
-                                      |
-       Module 03 OptimizationPipeline.process(prepared, objects)
-                                      |
-                       OptimizationOutputPacket
+SIH: FramePacket -> Module 01 (unchanged) -> PreparedFrame
+                                                |
+                                       adapters.sih
+                                                |
+Standalone: OpenCV camera/image/video -> adapters.standalone
+                                                |
+                                      core.DetectorPipeline
+                                      ONE Ultralytics adapter
+                                      parser/filter/tracking
+                                      source coordinate restoration
+                                                |
+                      +-------------------------+-------------------+
+                      |                         |                   |
+SIH constructors -> shared ObjectFrame   FrameRenderer       event trigger
+          |                    source frame COPY               |
+Module 03 (unchanged)          annotated image/video     bounded JPEG buffer
+                                                              |
+                                                     one local Ollama worker
+                                                              |
+                                                      SemanticResult side output
 ```
 
-Implementation stays in 02_yolo/. The existing yolo/ package locates this
-directory; run examples/tests from the repository root. Legacy perception.detector
-imports re-export the same adapter. See the authoritative
-[integration contract](../perception/INTEGRATION.md), [stage details](PIPELINE.md),
-[acceptance record](DEFINITION_OF_DONE.md) and [repair report](REPAIR_REPORT.md).
+The reviewed algorithm was relocated into `core/pipeline.py`, `core/detector.py`, and `core/postprocess.py`. The old `pipeline.py` and `inference/*` entry points are compatibility facades. The SIH adapter supplies shared observation/result constructors and preserves exception types; standalone supplies Module 02-owned `InputFrame`, `DetectionFrame`, configuration and observation types. No competing detector exists. Legacy scaffold directories remain inactive.
 
-## Contracts and coordinates
+YOLO owns class IDs, class names, bounding boxes, detector scores and backend track IDs every frame. Ultralytics reverses its own letterbox. Filtering, duplicate-ID rejection, prepared-to-source scaling, four-ULP boundary clamping, local class-map validation and tracker reset remain as reviewed. IDs are emitted only when the backend supplies them; Module 02 does not claim temporal confirmation or stabilize detections. Module 03 retains that ownership.
 
-| Contract | Authoritative definition | Module 02 use |
-|---|---|---|
-| PreparedFrame | shared/schemas/prepared_frame.py | BGR uint8 HxWx3 image, scale_x/scale_y, retained source, upstream status/diagnostics and reset signal |
-| FramePacket | shared/schemas/frame_packet.py | Original source metadata/image, owned upstream |
-| Detection, BoundingBox | shared/schemas/observations.py | ID, name, confidence, bbox=(x1,y1,x2,y2), optional backend ID |
-| ObjectFrame | shared/schemas/object_frame.py | Original dimensions, metadata, detections, status, diagnostics and measured duration |
+## Offline setup and model assets
 
-PreparedFrame has no direct frame_id or timestamp: those come from its source.
-Output copies source.frame_id, timestamp_s, source_id, session_id,
-width -> image_width and height -> image_height. No capture timestamp is generated.
-Free-form metadata/orientation stays on prepared.source; ObjectFrame has no such
-field. Shared contracts are unchanged.
-
-Module 01 already converts RGB to BGR, optionally downsizes with rounded height,
-and optionally equalizes luminance. It currently does **not** letterbox, crop or
-rotate. Its actual independent x/y scales are used, including rounding effects.
-Module 02 never repeats this preparation. Ultralytics performs model-specific
-letterbox, color/tensor adaptation and NMS internally; Results.boxes.xyxy are
-already restored to the image passed to inference. See the upstream
-[prediction/result reference](https://docs.ultralytics.com/modes/predict/).
-
-The parser produces prepared-image pixels. The stage filters/validates them there,
-then calls the existing PreparedFrame.source_detection() once:
-x_source=x_prepared/scale_x, y_source=y_prepared/scale_y. Published boxes are
-original-source pixels, with 0 <= x1 < x2 <= image_width and equivalent y bounds.
-After this transform, clamp_source_box corrects only floating-point boundary
-roundoff (up to four ULPs). Material out-of-bounds values or collapsed boxes fail
-the frame instead of being concealed. No second scaling stage is added.
-No model-letterboxed, normalized or rack-relative boxes cross this stage.
-Future crop/rotation support must update the authoritative upstream restoration
-contract first; Module 02 cannot infer missing transform metadata.
-
-## Installation and local weights
-
-Use existing requirements and an isolated environment. Dependencies are intentionally
-unpinned by repository policy until verified on demo hardware:
+Use Python 3.11+ and install dependencies **during setup**, before disconnecting the internet:
 
 ```powershell
-# Repository root; setup needs cached wheels or internet.
-.venv/Scripts/python.exe -m pip install -r requirements-perception.txt
-# Real backends, including existing optional Module 03 dependencies:
-.venv/Scripts/python.exe -m pip install -r requirements-perception-inference.txt
+python -m pip install -r 02_yolo/requirements.txt
+python 02_yolo/tools/inspect_har.py
+python 02_yolo/tools/extract_har_model.py
 ```
 
-Module 02 needs NumPy, PyYAML, Ultralytics and a matching CPU/CUDA PyTorch build.
-OpenCV is used upstream and by the CLI. Keep one compatible OpenCV wheel family;
-see [environment setup](../perception/README.md). Tracking needs local lap>=0.5.12.
-ONNX additionally needs a compatible preinstalled onnxruntime/onnxruntime-gpu
-distribution. The adapter never installs dependencies at runtime. Do not blindly
-add conflicting PyTorch/OpenCV distributions to a working environment.
+Install a CPU/CUDA Torch build appropriate for the host if necessary. Runtime loads existing local `.pt` or `.onnx` assets only. Never use an untrusted pickle checkpoint. The supplied `HAR/best.pt` was inspected statically before its explicitly authorized inference verification. The extraction tool selects that exact member, checks its size/SHA-256, refuses different existing weights, and never executes checkpoint code. `models/best.pt` is local and Git-ignored; distribute it explicitly with the copied module or use `--weights`. Do not silently fetch a model.
 
-Place trusted experiment-trained weights at 02_yolo/models/experiment_objects.pt
-or configure another existing local .pt/.onnx file. Framework-required checkpoint
-loading stays inside Ultralytics. Weights are ignored by Git.
-See [model setup](models/README.md). Trained weights are absent and
-configs/classes.yaml contains null placeholder IDs: supply both before real inference.
+The ready-to-use local profile is `02_yolo/config/standalone.yaml`, with:
 
-## Configuration
+- `models/best.pt`: YOLOv8n detection model used by the prototype.
+- Classes: `0 lid`, `1 main_box`, `2 red_box`, `3 yellow_box`.
+- Threshold 0.50, IoU 0.45, auto device, local ByteTrack and no ReID downloads.
 
-The existing schema is shared.config.DetectorConfig; the YAML section is
-detector, not yolo. yolo.config.load_config() reads it once, snapshots settings
-and rejects unknown fields. YAML paths are relative to the containing YAML file;
-constructor/CLI paths are relative to the current directory. Create a new stage
-to change settings rather than mutating configuration during inference.
+The existing repository `configs/yolo.yaml` and its class-map expectations are preserved. Choose the HAR profile explicitly in SIH mode when using these weights; its four classes differ from the old project placeholders. A model/class-map mismatch remains a fatal setup error.
 
-The authoritative configs/yolo.yaml currently contains:
+## Standalone mode
 
-```yaml
-detector:
-  backend: ultralytics
-  model_path: ../02_yolo/models/experiment_objects.pt
-  classes_path: classes.yaml
-  confidence_threshold: 0.50
-  iou_threshold: 0.45
-  class_whitelist: null
-  device: auto
-  cpu_fallback: true
-  tracking: true
-  tracker_path: yolo_tracker.yaml
+From the repository root:
+
+```powershell
+python -m yolo --source 0
+python -m yolo --source demo.mp4
+python -m yolo --source test.jpg
+python -m yolo --source demo.mp4 --vlm
+python -m yolo --source demo.mp4 --no-vlm --output annotated.mp4 --jsonl results.jsonl
+python -m yolo --source test.jpg --no-display --output annotated.png
+python -m yolo --source 0 --weights C:/models/best.pt --classes 02_yolo/config/har_classes.yaml --device cpu
 ```
 
-| Setting | Behavior |
-|---|---|
-| backend | ultralytics for real inference; none explicitly disables it; mock requires an injected backend |
-| model_path, classes_path | Required existing local weights and exact project class map |
-| confidence_threshold, iou_threshold | Finite [0,1]; project post-filter retains equality, but Ultralytics NMS uses strict confidence > threshold |
-| class_whitelist | null keeps all mapped classes, list selects IDs, [] keeps none; unknown IDs fail startup |
-| device | cpu, auto, cuda, cuda:N or one nonnegative CUDA index; existing optional mps when available |
-| cpu_fallback | Unavailable accelerator at startup can select CPU; runtime CPU retry is allowed only with tracking disabled; false enforces availability |
-| tracking, tracker_path | Optional backend IDs; validated local ByteTrack/BoT-SORT YAML with ReID disabled |
+OpenCV displays results; press Q or Escape to exit. A still image waits for a key. Console output is one JSON object per frame (detections, independent VLM status and last completed semantic result). `--jsonl` writes the same records. `--no-display` supports headless use. `--max-frames N` bounds camera/video runs. Camera identifiers are nonnegative integer strings; other sources must be existing local files. Network video URLs are rejected. Image output requires an image extension; camera/video output requires `.mp4`. The writer refuses frame-size changes.
 
-Auto chooses CUDA 0 when available, otherwise CPU. An index beyond the available
-CUDA device count is a startup error. Thresholds are repository defaults, not
-experimentally optimized values. The shared schema has no image_size setting:
-model-specific sizing uses the installed Ultralytics default.
+Copy **the entire `02_yolo` directory** anywhere, with its local model/config assets and installed dependencies:
 
-Tracking remains enabled in configs/yolo.yaml, as allowed by the integration
-contract. configs/yolo_tracker.yaml now uses new_track_thresh=0.50, aligned with
-confidence_threshold=0.50; track_high_thresh is also 0.50. Startup rejects either
-tracker threshold above detector confidence while tracking is enabled. This is
-logical consistency, not experimental tuning. Disabled tracking does not read or
-validate tracker settings. The detector's 0.50 cutoff excludes ByteTrack's lower
-score association band; these defaults do not claim full low-score recovery.
+```powershell
+cd C:/Temp/orbita_module02
+python standalone.py --source 0
+python standalone.py --source demo.mp4 --no-display --output annotated.mp4
+python standalone.py --source test.jpg --no-vlm
+```
 
-Installed Ultralytics 8.4.165 source was inspected: NMS uses strict > comparisons,
-while the project's post-filter uses >=. Tests injecting confidence exactly equal
-to the threshold verify the latter only; they do not override framework NMS.
-Tracking results also depend on association/confirmation: when tracks exist,
-framework callbacks may omit unconfirmed detections; when no tracks are returned,
-raw detections may remain with track_id=None. Both empty results and missing IDs
-are valid. See the primary [tracker reference](https://docs.ultralytics.com/reference/trackers/byte_tracker/)
-and [NMS reference](https://docs.ultralytics.com/reference/utils/nms/).
-Dependencies remain unpinned under repository policy; this source inspection is
-not a claim of successful native inference on that installed version.
+The copied directory needs no top-level `yolo/` alias, Module 01, Module 03, shared package, perception, integration, FSM, voice or GUI application. `standalone.py` bootstraps the package alias locally. From its parent, `python -m orbita_module02 --source test.jpg` also works if that is the directory name. Existing repository `python -m yolo --input image.png --core-config configs/perception.yaml` retains the previous single-image SIH smoke path. It requires SIH modules by design; `--source` is the independent path.
 
-classes.yaml requires a nonempty classes list with unique nonnegative integer id
-and unique nonempty name. It must exactly match model metadata, including classes
-excluded by whitelist; generic COCO weights cannot silently be relabelled.
-Unknown/fractional IDs and per-frame mapping changes are rejected explicitly.
-Core logic has no hardcoded demo colors or procedure-dependent filters.
-
-## Usage and lifecycle
+## SIH pipeline mode and integrated rendering
 
 ```python
-from perception.core import FrameProcessor
+from yolo.config import load_config
 from yolo.pipeline import YoloPipeline
+from yolo.semantic.contracts import SemanticConfig
 
-processor = FrameProcessor.from_yaml("configs/perception.yaml")
-with YoloPipeline.from_yaml("configs/yolo.yaml") as detector:
-    # packet is supplied by the external source.
-    prepared = processor.process(packet)
-    objects = detector.process(prepared)
-    # Existing Module 03: optimizer.process(prepared, objects)
+# prepared is the existing Module 01 PreparedFrame.
+with YoloPipeline(load_config("02_yolo/config/standalone.yaml"),
+                  semantic_config=SemanticConfig(enabled=True)) as module02:
+    objects = module02.process(prepared)  # exact shared ObjectFrame
+    downstream = module03.process(prepared, objects)  # existing Module 03 API
+    display = module02.render(prepared, objects)      # side branch only
+    semantic = module02.semantic_result              # may be None / old event
 ```
 
-initialize() loads/validates once; process() can initialize lazily for valid input.
-A lock serializes initialization, inference, reset and close. Use one stage per
-ordered source/session; the lock does not reorder concurrent submissions.
-Module 01 owns sequencing. Its reset signal clears backend tracker history without
-reloading weights. Explicitly reset the enclosing chain for source/session changes.
-If tracked accelerator inference fails, the adapter latches a reset-required
-failure: ObjectFrame is ERROR with no detections, no CPU retry/model move/predictor
-recreation occurs, and later calls stay ERROR without inference until reset.
-Reset the enclosing chain so Module 03 clears temporal state too; configure CPU
-for the restarted chain if necessary. Calling only the detector's reset while
-retaining downstream history is unsafe. Startup CPU selection is safe because no
-tracking history exists yet. Without tracking, accelerator-to-CPU retry remains.
-Context-manager exit closes the backend. There are no per-frame YAML reads,
-model reloads, GUI operations or image dumps.
+Real applications keep the pipeline alive across frames rather than opening it for each frame. Semantics default to disabled; enabling it does not alter `process()`'s return type. Module 03 receives the clean prepared/source frame and `ObjectFrame`. It never receives annotated pixels or Qwen output during this task. Callers own `cv2.imshow` or video writing in integrated mode. No Module 01 rendering hook is required.
 
-CLI smoke uses Module 01 and the same detector stage:
+## Coordinates and frame ownership
+
+`ObjectFrame` boxes are **absolute pixels of the original FramePacket image**, after exactly one inverse Module 01 scale conversion. `FrameRenderer` takes `prepared.source` in SIH mode and the standalone source frame in standalone mode. It validates dimensions, frame ID, timestamp, source and session against the result, converts original RGB/gray to display BGR as needed, and draws on a **copy**. A resized prepared image is rejected rather than silently drawing boxes in the wrong space. To render on a smaller display, render the original first and resize the completed display copy.
+
+Overlays show bounding boxes, class, YOLO score, available track ID, frame ID, YOLO status, tracking status and VLM status. A semantic overlay identifies the **last semantic event**, event ID, sampled frame ID and timestamp, so a slow result cannot appear to refer to the current frame. Rendering errors are `VisualizationError`; detection results remain available independently. Neither original pixels nor prepared AI pixels are changed.
+
+## Optional local Qwen3-VL
+
+Install Ollama separately and download its model explicitly during setup:
 
 ```powershell
-python -m yolo --input data/raw/sample.jpg --weights 02_yolo/models/experiment_objects.pt --classes configs/classes.yaml --device cpu --no-tracking
-python scripts/run_yolo.py --input data/raw/sample.jpg --device cpu
+ollama pull qwen3-vl:2b-instruct
+ollama serve
+python -m yolo --source 0 --vlm
 ```
 
-Supply sample.jpg locally. The CLI serializes ObjectFrame to stdout, logs to stderr,
-and returns 0 for usable output, 1 for frame ERROR/INVALID_INPUT, 2 for setup/file errors.
+An already running local Ollama service does not need a second `serve`. After dependencies and models are installed, internet may be disconnected. The default host is `http://localhost:11434` and default model `qwen3-vl:2b-instruct`. Override with `--ollama-host`, `--vlm-model`, or `--semantic-config 02_yolo/config/semantic.yaml`. Only HTTP loopback hosts are allowed, proxies/redirects are disabled, and cloud aliases are rejected. Runtime calls `/api/tags` and `/api/chat`; it never calls a pull endpoint. There is no OpenAI, Claude, Gemini, remote Qwen or other cloud API.
 
-## Offline and failure behavior
+The adapter follows Ollama's official [chat API](https://docs.ollama.com/api/chat), [local model listing](https://docs.ollama.com/api/tags), and [structured outputs](https://docs.ollama.com/capabilities/structured-outputs) contracts.
 
-File existence and suffixes are checked before loading. The adapter sets
-YOLO_OFFLINE=true and YOLO_AUTOINSTALL=false before importing Ultralytics and rejects
-conflicting environment/library flags. If another component imports Ultralytics
-first, set these variables at process launch. Offline state is read at import time;
-see the [Ultralytics utility reference](https://docs.ultralytics.com/reference/utils/__init__/).
-There are no cloud clients or external inference services. Install dependencies
-and assets before disconnecting the network.
+Availability is checked on first VLM event in the background, with retry caching (10 seconds by default). States distinguish `DISABLED`, `WAITING` (no chronological event yet), `BUSY`, `READY`, `MODEL_MISSING`, `OLLAMA_UNAVAILABLE`, `VLM_ERROR` and `VLM_PARSE_ERROR`. A connection error/timeout, missing model or parse failure emits `UNCERTAIN` with its own semantic failure status. **YOLO, tracking, ObjectFrame and rendering continue.** There is no automatic download or daemon startup.
 
-| Condition | Result |
-|---|---|
-| Missing/unreadable/incompatible weights, missing backend/runtime, bad class map/device/tracker | Actionable InitializationError, never permanently degraded startup |
-| Wrong input type or missing retained source | TypeError/ValueError identifying caller misuse |
-| Rejected upstream frame or invalid prepared image/scale | Empty INVALID_INPUT, no inference or initialization |
-| Healthy empty scene | Empty detections, NO_DETECTION |
-| Invalid confidence/class/ID/box row | Reject/count row; retain other valid rows with DEGRADED |
-| Positive finite box partly outside image | Intersect with bounds and report clipped_count; wholly outside/collapsed boxes rejected |
-| Malformed arrays, batch/shape/map mismatch, inference/reset failure | Empty ERROR with structured DETECTOR_FAILURE; transient failures may recover; tracked accelerator failures require coordinated reset |
-| Tracking disabled or backend ID absent | Capability notice, no fabricated ID or degradation solely from the notice |
+### Event sampling and worker bounds
 
-Order is preserved. Scores are uncalibrated confidence in [0,1].
-The stage clears downstream stability/continuity/reference fields when creating
-output leaves. It publishes no lost-object predictions, track quality or confirmation
-votes. reference_anchors is a reserved legacy schema field, always []; it does not
-report reference visibility or loss. Module 03 calibrates independently and
-publishes SpatialFeaturePacket.reference_frame / ReferenceFrameInfo. See
-[integration owner notes](INTEGRATION_OWNER_NOTES.md) for the comment-only schema
-alignment and the existing scripts/run_yolo.py ownership sign-off requirement.
-Backend IDs are session-local and reusable after reset, not permanent physical IDs.
+The default buffer holds at most eight detached JPEGs, samples every second accepted detector frame, selects at most four evenly spaced chronological keyframes, and downsizes each image to a 640-pixel maximum side. A JPEG is capped at 1 MiB; capacity is validated between 2 and 64. Observation snapshots carry class names, detector scores, track IDs and original-source boxes. The newest selected image's frame ID/timestamp anchors the semantic result.
 
-stage_timings_ms["object_detection_ms"] measures inference/conversion/filtering,
-excluding startup; invalid input records zero. Upstream diagnostics are copied.
-Standard Python logging reports the first runtime/reset failure in an episode at
-WARNING, repeated failures at DEBUG, and the next successful inference at INFO.
-Invalid upstream input does not falsely announce inference recovery. Startup
-configuration failures remain ERROR logs/exceptions.
-Module 03 merges preprocessing and detection timing separately and must check
-unusable statuses before performing object-dependent reasoning.
+The explainable trigger checks **direction-independent** object-center displacement normalized by image diagonal, appearance/disappearance or identity changes. Untracked duplicate classes are excluded from displacement matching. Default displacement threshold is 0.04 and cooldown is three seconds. Optional `interval_s` requests a configured interval; it is off by default. These are trigger thresholds, not physical action classifiers. Camera motion can trigger events. No image-axis gravity assumption is used.
 
-## Testing and limitations
+There is one daemon worker and at most **one pending/in-flight event**, with no frame backlog. Events are skipped while busy, and fresh frames continue through YOLO. Default HTTP timeout is 30 seconds; response size is capped at 1 MiB. `context_tokens: 16384` is explicit because four images exceeded the installed Ollama default 4096-token context during verification. Larger settings may consume more RAM. No performance guarantee is made.
+
+A single still image does not automatically request a temporal action label; it normally shows `WAITING` when VLM is enabled. A short video can finish before its VLM event completes. Shutdown discards those results instead of delaying the detector loop. Long live sessions show completed events on following frames.
+
+### Semantic contract and validation
+
+`SemanticResult` is frozen and owned by Module 02:
+
+```text
+action, object_name, status, timestamp_s, frame_id, event_id, reason
+```
+
+The default action-object allowlist preserves the prototype names:
+
+```text
+PICK_RED / PLACE_RED / MANIPULATE_RED       -> red_box
+PICK_YELLOW / PLACE_YELLOW / MANIPULATE_YELLOW -> yellow_box
+NONE / UNCERTAIN                          -> null
+```
+
+Set `action_objects` in semantic YAML or `SemanticConfig` for another experiment. Qwen receives ordered images, the allowlist, object observations and explicit orientation guidance. It returns exactly `{"action":"PICK_RED","object":"red_box"}` or another allowed pair. Parsing rejects duplicate keys, Markdown, free text, extra fields, unknown actions and inconsistent object names. Invalid output becomes `UNCERTAIN` / `VLM_PARSE_ERROR`. No arbitrary response text enters the semantic contract or FSM. There is no numeric VLM confidence/probability field.
+
+## Configuration and reset
+
+The existing detector-only YAML layout (`detector:`) is retained, with model/classes/tracker paths relative to that YAML. Confidence, IoU, whitelist, device, CPU fallback and tracking remain configurable. Semantic settings live in a separate `semantic:` YAML, leaving the shared DetectorConfig unchanged. `--vlm` / `--no-vlm` overrides `enabled`. See the provided config files for all practical defaults.
+
+Upstream `reset_required` retains the reviewed tracking reset/retry behavior and clears the temporal buffer, trigger baseline, pending event and stale semantic output. Explicit `reset()` does the same. Generation tokens prevent an old in-flight response from publishing after reset or close. Loaded YOLO weights are preserved when the backend supports tracker reset. An already executing HTTP request cannot be forcibly canceled safely: it finishes/times out in the daemon, its output is ignored, and new semantic work waits until that one request finishes. No second worker is spawned.
+
+YOLO initialization failures remain fatal setup errors. YOLO frame failures produce empty `ERROR` results; tracker reset failures are labeled `tracker_reset` in diagnostics. Tracked accelerator failure requires a coordinated reset; it never silently restarts IDs via CPU fallback. VLM failures degrade semantics only. Source errors and visualization errors have distinct exception types and CLI error messages. CLI returns 0 for successful operation, 1 for detector frame failures and 2 for setup/source/render failures. A VLM failure alone does not make a healthy detector run fail.
+
+## HAR.zip migration audit
+
+The archive contains exactly `HAR/`, `HAR/main.py` (8,013 bytes), `HAR/best.pt` (6,249,770 bytes) and `HAR/weights.pt` (5,423,109 bytes). Inspection used ZIP listing, source text and `pickletools` disassembly, **not torch.load/unpickling** for metadata.
+
+| File / component | Purpose | Classification | Destination |
+|---|---|---|---|
+| main.py YOLO("best.pt"), conf=0.45 | Local detector loop | ADAPT | Existing detector core retained; separate HAR profile uses reviewed 0.50 default |
+| main.py ObjectTracker | Class-keyed y-center/aspect smoothing and debounce; not multi-object ID tracking | ADAPT concept | Bounded temporal buffer and direction-independent trigger; existing ByteTrack IDs retained |
+| main.py PICK/PLACE/MANIPULATE heuristics | Upward displacement, table return and aspect change | DISCARD as action authority | No vertical-motion action rule ported |
+| main.py drawing/capture | OpenCV rectangles, labels, webcam and HUD | ADAPT | inputs/opencv_source.py and visualization/renderer.py, drawing on copies |
+| main.py ExperimentSequence | Ordered steps, advancement, wrong-order warning | MOVE ELSEWHERE (ownership only) | Remains reference material for external FSM; no sequencing code moved |
+| main.py speak_async / pyttsx3 | Threaded voice prompts | MOVE ELSEWHERE (ownership only) | Alert layer responsibility; no voice code moved |
+| best.pt | YOLOv8n DetectionModel, checkpoint Ultralytics 8.4.162; IDs 0 lid, 1 main_box, 2 red_box, 3 yellow_box | REUSE | Explicitly extracted once to models/best.pt |
+| weights.pt | YOLO26n (yolo26n.yaml) DetectionModel, checkpoint 8.4.55; IDs 0 HAR, 1 Lid, 2 main_box, 3 red_box, 4 yellow_box | DISCARD from active configuration | Remains in archive; not used by main.py, not extracted or loaded |
+
+`best.pt` SHA-256: `b9ab5c71a5c4e0ed151d6e8001983e5e7d5a5995a73cc419d580da304f1c687d`.
+`weights.pt` SHA-256: `8884dd82cff5c497f59ae09a8076dc8d26dd12fbce59fa2dfbaafe40235c425a`.
+Architecture/class labels are statically inspected checkpoint claims, and best.pt subsequently passed real local loading/inference. Weights.pt was not runtime validated. Nothing in the archive establishes action accuracy. Both carry Ultralytics AGPL metadata; consider applicable licensing when distributing them.
+
+## Verification and limitations
+
+Commands used (from repository root; the repository venv is shown):
 
 ```powershell
-.venv/Scripts/python.exe -m pytest 02_yolo/tests -q
-.venv/Scripts/python.exe -m pytest -q --tb=short
-.venv/Scripts/python.exe -m compileall -q 02_yolo yolo
-# Optional developer tooling (mypy must already be installed):
-.venv/Scripts/python.exe -m yolo.tests.verify_types
-# Optional fresh-process real CPU/tracker/CLI smoke; requires installed backends:
-python -m yolo.tests.verify_real_offline
+.\.venv\Scripts\python.exe -m pytest 02_yolo/tests tests/test_yolo_to_optimization.py -q -p no:cacheprovider
+.\.venv\Scripts\python.exe 02_yolo/tools/inspect_har.py
+.\.venv\Scripts\python.exe 02_yolo/tools/extract_har_model.py
+.\.venv\Scripts\python.exe -m pytest 02_yolo/tests -q -p no:cacheprovider
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+.\.venv\Scripts\python.exe 02_yolo/tools/verify_runtime.py
+.\.venv\Scripts\python.exe 02_yolo/tools/smoke_semantic.py
 ```
 
-Fixtures reject socket access, inject synthetic outputs and never download/load
-real weights. Tests execute actual FrameProcessor, YoloPipeline and
-OptimizationPipeline stages, covering metadata, coordinates, filtering, empty
-frames, parsing, initialization, devices, model reuse/reset and recovery.
+The offline tests reject socket connections/DNS and mock Ollama responses. New tests cover both adapters, source-sized nonmutating visualization, actual Module 03 consumption, empty/mismatched frames, bounded/sampled chronology, direction-independent triggers, parser validation, configuration, unavailable Ollama/model, timeout/API/parse errors, bounded worker, reset races, camera structure, image/video writing and copying the module with forbidden SIH imports. The real runtime check blocks outbound networking, loads local weights, writes/reads a four-frame annotated MP4, verifies real backend ID persistence, passes Module 01 -> Module 02 -> Module 03 with a four-frame integrated annotated MP4 and runs copied standalone with no SIH imports. Test numbers and final results are in [UPDATE_REPORT.md](UPDATE_REPORT.md).
 
-The optional type runner checks unchanged active sources under a temporary valid
-package name because mypy does not follow the runtime yolo.__path__ locator.
-It checks the ten active modules, excluding third-party internals and inactive
-planning scaffolds. If the OS temporary directory is inaccessible, create
-02_yolo/.verification and pass a fresh --basetemp directory below it to pytest.
+Ollama smoke uses synthetic chronological red-square images. Its response verifies local transport/model/schema execution only. Detection/action accuracy, calibrated confidence, representative FPS, latency benchmarks, GPU behavior and physical webcam/display operation were **not measured/verified**. Camera handling is structurally tested; real image/video inference and saved outputs were verified. OpenCV cannot reliably distinguish a mid-video decode error from EOF. Rendering is opt-in in SIH mode; runtime users choose their display/writer.
 
-The opt-in smoke makes temporary **random untrained** weights from an installed
-YOLO11 architecture and denies/counts Python socket attempts. It verifies plumbing,
-not accuracy, and is not collected by pytest. Tracking tests now execute model-free
-checks for supplied IDs, missing IDs, disabled tracking, empty frames, threshold
-relationships, reset and accelerator failure behavior; no Module 02 tests are
-skipped. These replace unused footage-evaluation placeholders rather than claiming
-physical crossing/reacquisition or lost-track quality has been evaluated.
-
-Real smoke is currently blocked by Windows Application Control (WinError 4551
-loading torch.dll). CPU/CUDA policies are tested with mocked framework outputs;
-successful native inference, native-code network isolation, ONNX/MPS and physical
-GPU execution are not claimed by this repair. Earlier Module 01 evidence is
-historical, not a rerun of these changes.
-
-Final experiment weights/classes and camera trials remain deployment work.
-Accuracy, FPS and target-device latency: **not measured**. There is no spacecraft
-certification or microgravity-validation claim.
+**Rotation-based ground demonstrations are only approximations of orientation-agnostic behavior and do not prove real microgravity performance.** A 2B VLM can make semantic mistakes. This is a hackathon prototype, with no flight certification, space qualification, microgravity validation, ISRO validation or safety certification. FSM sequencing, skipped steps, next-step suggestions, procedure validation and voice remain outside Module 02.

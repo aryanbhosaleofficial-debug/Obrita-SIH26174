@@ -1,0 +1,13 @@
+semantic:
+  enabled: false
+  model: qwen3-vl:2b-instruct
+  host: http://localhost:11434
+  timeout_s: 30.0
+  context_tokens: 16384
+  capacity: 8
+  sample_every_frames: 2
+  keyframes: 4
+  max_image_side: 640
+  cooldown_s: 3.0
+  displacement_threshold: 0.04
+  interval_s: null

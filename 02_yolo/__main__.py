@@ -1,6 +1,11 @@
-"""python -m yolo entry point; no alternate detector implementation."""
-
-# ruff: noqa: N999 -- numbered team directory is exposed through the yolo package
-from yolo.cli import main
-
+"""Standalone default entry point, with the legacy --input SIH smoke preserved."""
+# ruff: noqa: N999
+import sys
+if __package__ != "yolo":
+    from .standalone import bootstrap
+    bootstrap()
+if "--input" in sys.argv:
+    from yolo.cli import main
+else:
+    from yolo.standalone_cli import main
 raise SystemExit(main())

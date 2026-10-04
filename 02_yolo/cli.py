@@ -10,11 +10,9 @@ import cv2
 from yolo.config import load_config
 from yolo.pipeline import YoloPipeline
 
-from perception.core import FrameProcessor
 from shared.config import ConfigurationError
 from shared.enums.module_status import ModuleStatus
 from shared.errors import InitializationError
-from shared.schemas.frame_packet import FramePacket
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
@@ -38,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
     try:
+        from perception.core import FrameProcessor
+        from shared.schemas.frame_packet import FramePacket
         config = load_config(args.config)
         updates = {
             name: value

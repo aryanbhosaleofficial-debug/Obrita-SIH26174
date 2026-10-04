@@ -5,7 +5,7 @@ from numbers import Real
 
 import numpy as np
 
-from shared.schemas.prepared_frame import PreparedFrame
+from yolo.core.contracts import InputFrame as PreparedFrame
 
 
 def input_error(prepared: PreparedFrame) -> str | None:

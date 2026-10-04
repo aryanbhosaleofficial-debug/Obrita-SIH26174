@@ -1,0 +1,10 @@
+detector:
+  backend: ultralytics
+  model_path: ../models/best.pt
+  classes_path: har_classes.yaml
+  confidence_threshold: 0.50
+  iou_threshold: 0.45
+  device: auto
+  cpu_fallback: true
+  tracking: true
+  tracker_path: tracker.yaml
