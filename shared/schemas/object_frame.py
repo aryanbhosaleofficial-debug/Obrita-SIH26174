@@ -33,6 +33,12 @@ from shared.schemas.observations import Detection as DetectedObject
 
 @dataclass
 class ReferenceAnchor:
+    """Legacy optional leaf retained for wire/import compatibility.
+
+    The current pipeline does not populate this leaf. Reference interpretation
+    and calibration belong to Module 03, using ReferenceFrameInfo instead.
+    """
+
     anchor_role: str
     # Reference role from configs/classes.yaml, e.g. "rack" or "payload".
 
@@ -61,7 +67,10 @@ class ObjectFrame:
     # Optional ---------------------------------------------------------------
     detections: list[DetectedObject] = field(default_factory=list)
     reference_anchors: list[ReferenceAnchor] = field(default_factory=list)
-    # Empty when no anchor is visible. Never fabricated.
+    # Reserved legacy compatibility field: current Module 02 always emits [].
+    # This is not a reference-visibility or calibration result. Module 03 owns
+    # reference derivation via SpatialFeaturePacket.reference_frame; do not infer
+    # marker loss or reference validity from this list.
 
     status: ModuleStatus = ModuleStatus.OK
     source_id: str = "camera_0"

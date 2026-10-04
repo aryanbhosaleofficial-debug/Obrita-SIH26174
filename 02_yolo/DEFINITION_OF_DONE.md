@@ -25,6 +25,12 @@ Exact verification results and limits are in [REPAIR_REPORT.md](REPAIR_REPORT.md
 - [x] Documentation and smoke CLI follow implemented architecture.
 - [x] Canonical/legacy import checks and syntax compilation pass.
 - [x] Ruff lint/format checks and mypy on ten active source modules pass.
+- [x] Enabled tracker high/new thresholds cannot exceed detector confidence.
+- [x] Tracked accelerator failures cannot transparently rebuild/reuse tracker IDs.
+- [x] Model-free tracking tests execute; no Module 02 tests remain skipped.
+- [x] Restored source bounds corrected for numerical roundoff only.
+- [x] Runtime failure/recovery logs report transitions without repeated warnings.
+- [x] Legacy reference field ownership aligned; unused scaffold docs deprecated.
 
 Deployment/evaluation gates, separate from implemented stage behavior:
 
@@ -35,6 +41,7 @@ Deployment/evaluation gates, separate from implemented stage behavior:
 - [ ] Measure target FPS/latency and detection quality on documented data.
 - [ ] Complete independent teammate review.
 
-Model-free tests do not establish recognition accuracy. Five historical footage
-tracker cases remain skipped. Reference anchors stay empty; calibration belongs
+Model-free tests do not establish recognition accuracy. Physical tracker footage
+evaluation remains a deployment gate, not skipped unit coverage. Reference anchors
+are reserved/empty; calibration belongs
 to Module 03. No benchmarks or spacecraft qualification are claimed.

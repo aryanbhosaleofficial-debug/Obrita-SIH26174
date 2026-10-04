@@ -12,8 +12,8 @@ classes:
     name: person
     role: operator
 
-  # Reference objects used to build the rack-relative frame (Module 02 anchors,
-  # Module 03 rack_reference, Module 04 orientation).
+  # Reference object classes detected by Module 02. Semantic reference derivation
+  # and calibration belong to Module 03; ObjectFrame.reference_anchors is reserved.
   - id: null
     name: PLACEHOLDER_RACK
     role: reference
@@ -32,7 +32,8 @@ classes:
     role: experiment_object
 
 # Valid roles: operator | reference | experiment_object
-# Anchor role names that Module 02 reports as ReferenceAnchor.anchor_role:
+# Legacy role metadata retained for compatibility, not Module 02 anchor output.
+# Active Module 03 calibration is configured in optimization.yaml.
 reference_roles:
   rack: PLACEHOLDER_RACK
   payload: PLACEHOLDER_PAYLOAD

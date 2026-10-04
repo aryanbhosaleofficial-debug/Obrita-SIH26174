@@ -20,6 +20,29 @@ class BackendOutputError(ValueError):
     """A structurally inconsistent batch cannot be interpreted safely."""
 
 
+def clamp_source_box(box: BoundingBox, width: int, height: int) -> BoundingBox:
+    """Correct inverse-scale roundoff only, after authoritative restoration.
+
+    Allow up to four floating-point ULPs at each source bound. Larger excursions
+    indicate a contract/transform defect and fail instead of being concealed.
+    """
+    values = (box.x1, box.y1, box.x2, box.y2)
+    limits = (width, height, width, height)
+    for value, limit in zip(values, limits, strict=True):
+        tolerance = 4 * math.ulp(float(limit))
+        if not math.isfinite(value) or value < -tolerance or value > limit + tolerance:
+            raise BackendOutputError("restored box materially exceeds source bounds")
+    corrected = BoundingBox(
+        *(
+            float(min(limit, max(0.0, value)))
+            for value, limit in zip(values, limits, strict=True)
+        )
+    )
+    if corrected.x1 >= corrected.x2 or corrected.y1 >= corrected.y2:
+        raise BackendOutputError("restored box has no positive area")
+    return corrected
+
+
 def _array(value: Any) -> np.ndarray:
     if hasattr(value, "cpu"):
         value = value.cpu()
