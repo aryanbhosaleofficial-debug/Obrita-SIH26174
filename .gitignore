@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtual environments / secrets
+.venv/
+venv/
+.env
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs (keep folder placeholder)
+logs/*
+!logs/.gitkeep
+
+# Runtime outputs (keep folder placeholders)
+outputs/recordings/*
+!outputs/recordings/.gitkeep
+outputs/debug_frames/*
+!outputs/debug_frames/.gitkeep
+outputs/events/*
+!outputs/events/.gitkeep
+
+# Large / raw data (keep folder placeholders; data/README.md stays tracked)
+data/raw/*
+!data/raw/.gitkeep
+data/videos/*
+!data/videos/.gitkeep
+
+# Model weights (02_yolo/models/README.md stays tracked)
+*.pt
+*.onnx
+*.engine
+*.task
+*.tflite

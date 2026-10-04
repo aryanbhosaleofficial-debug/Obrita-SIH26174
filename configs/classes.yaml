@@ -1,0 +1,38 @@
+# =============================================================================
+# classes.yaml — configurable object classes
+#
+# PLACEHOLDER CONFIGURATION. The real experiment object classes are not yet
+# defined. Replace the PLACEHOLDER entries with the classes the YOLO model is
+# actually trained on. Class ids must match the trained model's class indices.
+# =============================================================================
+
+classes:
+  # The operator. Module 03 uses this class to select the person ROI.
+  - id: null
+    name: person
+    role: operator
+
+  # Reference objects used to build the rack-relative frame (Module 02 anchors,
+  # Module 03 rack_reference, Module 04 orientation).
+  - id: null
+    name: PLACEHOLDER_RACK
+    role: reference
+
+  - id: null
+    name: PLACEHOLDER_PAYLOAD
+    role: reference
+
+  # Experiment objects the operator interacts with.
+  - id: null
+    name: PLACEHOLDER_OBJECT_A
+    role: experiment_object
+
+  - id: null
+    name: PLACEHOLDER_OBJECT_B
+    role: experiment_object
+
+# Valid roles: operator | reference | experiment_object
+# Anchor role names that Module 02 reports as ReferenceAnchor.anchor_role:
+reference_roles:
+  rack: PLACEHOLDER_RACK
+  payload: PLACEHOLDER_PAYLOAD
