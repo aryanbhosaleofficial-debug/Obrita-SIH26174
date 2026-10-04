@@ -1,22 +1,25 @@
 """One daemon worker and at most one in-flight event; no frame backlog."""
 
-from threading import Condition, Thread
+from threading import Condition, Lock, Thread
 
 from yolo.semantic.contracts import SemanticConfig, SemanticResult, SemanticStatus
 from yolo.semantic.event_trigger import EventTrigger
 from yolo.semantic.qwen_verifier import QwenVerifier
-from yolo.semantic.temporal_buffer import TemporalBuffer
+from yolo.semantic.temporal_buffer import Keyframe, TemporalBuffer
 from yolo.visualization.renderer import source_bgr
 
 
 class SemanticWorker:
-    def __init__(self, config=None, verifier=None):
+    def __init__(self, config=None, verifier=None, *, verifier_lock=None):
         self.config = config or SemanticConfig()
         self.buffer = TemporalBuffer(self.config)
         self.trigger = EventTrigger(self.config)
         self.verifier = verifier or QwenVerifier(self.config)
+        # A closed generation may still be finishing its HTTP call when the
+        # pipeline reopens. Serialize reuse of that same mutable verifier.
+        self.verifier_lock = verifier_lock if verifier_lock is not None else Lock()
         self._condition = Condition()
-        self._pending = None
+        self._pending: tuple[int, tuple[Keyframe, ...], int, str] | None = None
         self._busy = False
         self._generation = 0
         self._event_id = 0
@@ -29,6 +32,11 @@ class SemanticWorker:
         if self.config.enabled:
             self._thread = Thread(target=self._run, name="module02-vlm", daemon=True)
             self._thread.start()
+
+    @property
+    def closed(self):
+        with self._condition:
+            return self._closed
 
     @property
     def latest(self):
@@ -73,10 +81,23 @@ class SemanticWorker:
                 )
                 if self._closed:
                     return
+                assert (
+                    self._pending is not None
+                )  # guaranteed by wait predicate under lock
                 generation, frames, event_id, reason = self._pending
                 self._pending = None
             try:
-                result = self.verifier.verify(frames, event_id, reason)
+                with self.verifier_lock:
+                    with self._condition:
+                        if self._closed:
+                            self._busy = False
+                            self._condition.notify_all()
+                            return
+                        if generation != self._generation:
+                            self._busy = False
+                            self._condition.notify_all()
+                            continue
+                    result = self.verifier.verify(frames, event_id, reason)
                 if not isinstance(result, SemanticResult):
                     raise TypeError("verifier violated semantic contract")
             except Exception:  # noqa: BLE001 -- isolate replaceable local VLM backend

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from yolo.core.contracts import DetectorConfig as InternalConfig
 from yolo.core.contracts import InputFrame, SourceFrame
+from yolo.core.contracts import ModuleStatus as InternalStatus
 
 from shared.config import DetectorConfig
 from shared.diagnostics import Diagnostic, NoticeCode, WarningCode
@@ -54,7 +55,7 @@ def adapt_prepared(prepared):
             source.session_id,
             source.color_format,
         ),
-        status=prepared.status,
+        status=InternalStatus(prepared.status.value),
         warnings=list(prepared.warnings),
         notices=list(prepared.notices),
         accepted=prepared.accepted,

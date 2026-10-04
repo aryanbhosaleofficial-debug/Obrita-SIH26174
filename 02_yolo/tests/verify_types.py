@@ -19,6 +19,8 @@ ACTIVE_MODULES = (
     "input_validation.py",
     "pipeline.py",
     "cli.py",
+    "standalone.py",
+    "standalone_cli.py",
     "inference/__init__.py",
     "inference/detector.py",
     "inference/postprocess.py",
@@ -28,11 +30,15 @@ ACTIVE_MODULES = (
 
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
-    scratch = root / "02_yolo/.verification"
-    scratch.mkdir(exist_ok=True)
-    with TemporaryDirectory(dir=scratch, prefix="mypy-source-") as temporary:
+    with TemporaryDirectory(prefix="orbita-mypy-source-") as temporary:
         view = Path(temporary)
-        for name in ACTIVE_MODULES:
+        source_names = list(ACTIVE_MODULES)
+        for package in ("core", "adapters", "inputs", "semantic", "visualization"):
+            source_names.extend(
+                str(path.relative_to(root / "02_yolo"))
+                for path in (root / "02_yolo" / package).rglob("*.py")
+            )
+        for name in source_names:
             target = view / "yolo" / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(root / "02_yolo" / name, target)

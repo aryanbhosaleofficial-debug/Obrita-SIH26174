@@ -14,7 +14,7 @@ class EventTrigger:
 
     def check(self, objects):
         # Ambiguous untracked duplicate classes are excluded from motion matching.
-        counts = {}
+        counts: dict[str, int] = {}
         for d in objects.detections:
             counts[d.class_name] = counts.get(d.class_name, 0) + 1
         current = {

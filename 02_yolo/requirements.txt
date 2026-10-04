@@ -1,5 +1,6 @@
 numpy
-opencv-python
+# Match the root ORBITA/MediaPipe/ArUco dependency family; do not install both wheels.
+opencv-contrib-python>=4.7
 PyYAML
 # Install before offline use, including a hardware-appropriate Torch build.
 ultralytics

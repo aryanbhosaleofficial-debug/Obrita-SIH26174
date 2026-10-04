@@ -47,6 +47,7 @@ class OpenCVSource:
             return
         frame_id = 0
         started = monotonic()
+        assert self.capture is not None  # initialized for every non-image source
         while True:
             ok, image = self.capture.read()
             if not ok:

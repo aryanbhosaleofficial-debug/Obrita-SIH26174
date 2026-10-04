@@ -37,11 +37,14 @@ Use Python 3.11+ and install dependencies **during setup**, before disconnecting
 
 ```powershell
 python -m pip install -r 02_yolo/requirements.txt
+# Only when the original HAR.zip is available:
 python 02_yolo/tools/inspect_har.py
 python 02_yolo/tools/extract_har_model.py
 ```
 
-Install a CPU/CUDA Torch build appropriate for the host if necessary. Runtime loads existing local `.pt` or `.onnx` assets only. Never use an untrusted pickle checkpoint. The supplied `HAR/best.pt` was inspected statically before its explicitly authorized inference verification. The extraction tool selects that exact member, checks its size/SHA-256, refuses different existing weights, and never executes checkpoint code. `models/best.pt` is local and Git-ignored; distribute it explicitly with the copied module or use `--weights`. Do not silently fetch a model.
+Use the root ORBITA OpenCV family: **opencv-contrib-python>=4.7**. Avoid installing opencv-python, opencv-contrib-python and their headless variants together: they share the cv2 namespace. The current environment contains both OpenCV wheels, so installed packages were left unchanged during freeze cleanup. In a fresh environment install one family; Ultralytics may pull opencv-python transitively. If both are present, explicitly uninstall both and reinstall only opencv-contrib-python during environment setup, then run the verification suite. This package-only repair is not part of normal runtime.
+
+Install a CPU/CUDA Torch build appropriate for the host if necessary. Runtime loads existing local `.pt` or `.onnx` assets only. Never use an untrusted pickle checkpoint. The supplied `HAR/best.pt` was inspected statically before its explicitly authorized inference verification. The extraction tool selects that exact member, checks its size/SHA-256, refuses different existing weights, and never executes checkpoint code. `models/best.pt` is local and Git-ignored; [MODEL_MANIFEST.md](models/MODEL_MANIFEST.md) records current metadata, hash and a verified backup. HAR.zip is currently absent, so archive-inspection/extraction commands are optional historical setup only; distribute it explicitly with the copied module or use `--weights`. Do not silently fetch a model.
 
 The ready-to-use local profile is `02_yolo/config/standalone.yaml`, with:
 
@@ -86,15 +89,19 @@ from yolo.pipeline import YoloPipeline
 from yolo.semantic.contracts import SemanticConfig
 
 # prepared is the existing Module 01 PreparedFrame.
-with YoloPipeline(load_config("02_yolo/config/standalone.yaml"),
-                  semantic_config=SemanticConfig(enabled=True)) as module02:
+with YoloPipeline(
+    load_config("02_yolo/config/standalone.yaml"),
+    semantic_config=SemanticConfig(enabled=True),
+) as module02:
     objects = module02.process(prepared)  # exact shared ObjectFrame
     downstream = module03.process(prepared, objects)  # existing Module 03 API
-    display = module02.render(prepared, objects)      # side branch only
-    semantic = module02.semantic_result              # may be None / old event
+    display = module02.render(prepared, objects)  # side branch only
+    semantic = module02.semantic_result  # may be None / old event
 ```
 
-Real applications keep the pipeline alive across frames rather than opening it for each frame. Semantics default to disabled; enabling it does not alter `process()`'s return type. Module 03 receives the clean prepared/source frame and `ObjectFrame`. It never receives annotated pixels or Qwen output during this task. Callers own `cv2.imshow` or video writing in integrated mode. No Module 01 rendering hook is required.
+Real applications keep the pipeline alive across frames rather than opening it for each frame. Semantics default to disabled; enabling it does not alter `process()`'s return type. Module 03 receives the clean prepared/source frame and `ObjectFrame`. It never receives annotated pixels or Qwen output during this task. A custom backend injected into `YoloPipeline` must return **shared.schemas.observations.Detection** leaves with shared BoundingBox types; its diagnostics must use shared contracts too. Module-private core leaves belong to DetectorPipeline/standalone and are rejected at the SIH boundary with INVALID_OBSERVATION diagnostics. This does not weaken leaf validation or modify shared schemas.
+
+Callers own `cv2.imshow` or video writing in integrated mode. No Module 01 rendering hook is required.
 
 ## Coordinates and frame ownership
 
@@ -150,13 +157,13 @@ Set `action_objects` in semantic YAML or `SemanticConfig` for another experiment
 
 The existing detector-only YAML layout (`detector:`) is retained, with model/classes/tracker paths relative to that YAML. Confidence, IoU, whitelist, device, CPU fallback and tracking remain configurable. Semantic settings live in a separate `semantic:` YAML, leaving the shared DetectorConfig unchanged. `--vlm` / `--no-vlm` overrides `enabled`. See the provided config files for all practical defaults.
 
-Upstream `reset_required` retains the reviewed tracking reset/retry behavior and clears the temporal buffer, trigger baseline, pending event and stale semantic output. Explicit `reset()` does the same. Generation tokens prevent an old in-flight response from publishing after reset or close. Loaded YOLO weights are preserved when the backend supports tracker reset. An already executing HTTP request cannot be forcibly canceled safely: it finishes/times out in the daemon, its output is ignored, and new semantic work waits until that one request finishes. No second worker is spawned.
+Upstream `reset_required` retains the reviewed tracking reset/retry behavior and clears the temporal buffer, trigger baseline, pending event and stale semantic output. Explicit `reset()` does the same. Generation tokens prevent an old in-flight response from publishing after reset or close. Loaded YOLO weights are preserved when the backend supports tracker reset. An already executing HTTP request cannot be forcibly canceled safely: it finishes/times out in the daemon, its output is ignored, and new semantic work waits until that one request finishes. A closed pipeline can be reused: successful initialize (explicitly or from process) creates a fresh semantic worker with the same configuration and verifier. Closed-generation results cannot publish. A shared verifier lock prevents overlapping verifier calls while the old request completes; YOLO initialization/processing does not wait for that request. Semantic events remain bounded and queued work waits for the retained verifier to become available.
 
 YOLO initialization failures remain fatal setup errors. YOLO frame failures produce empty `ERROR` results; tracker reset failures are labeled `tracker_reset` in diagnostics. Tracked accelerator failure requires a coordinated reset; it never silently restarts IDs via CPU fallback. VLM failures degrade semantics only. Source errors and visualization errors have distinct exception types and CLI error messages. CLI returns 0 for successful operation, 1 for detector frame failures and 2 for setup/source/render failures. A VLM failure alone does not make a healthy detector run fail.
 
 ## HAR.zip migration audit
 
-The archive contains exactly `HAR/`, `HAR/main.py` (8,013 bytes), `HAR/best.pt` (6,249,770 bytes) and `HAR/weights.pt` (5,423,109 bytes). Inspection used ZIP listing, source text and `pickletools` disassembly, **not torch.load/unpickling** for metadata.
+The historical audit recorded the archive contents below; HAR.zip is now absent. The current model is independently documented in models/MODEL_MANIFEST.md. The archive contained exactly `HAR/`, `HAR/main.py` (8,013 bytes), `HAR/best.pt` (6,249,770 bytes) and `HAR/weights.pt` (5,423,109 bytes). Inspection used ZIP listing, source text and `pickletools` disassembly, **not torch.load/unpickling** for metadata.
 
 | File / component | Purpose | Classification | Destination |
 |---|---|---|---|
@@ -187,8 +194,23 @@ Commands used (from repository root; the repository venv is shown):
 .\.venv\Scripts\python.exe 02_yolo/tools/smoke_semantic.py
 ```
 
-The offline tests reject socket connections/DNS and mock Ollama responses. New tests cover both adapters, source-sized nonmutating visualization, actual Module 03 consumption, empty/mismatched frames, bounded/sampled chronology, direction-independent triggers, parser validation, configuration, unavailable Ollama/model, timeout/API/parse errors, bounded worker, reset races, camera structure, image/video writing and copying the module with forbidden SIH imports. The real runtime check blocks outbound networking, loads local weights, writes/reads a four-frame annotated MP4, verifies real backend ID persistence, passes Module 01 -> Module 02 -> Module 03 with a four-frame integrated annotated MP4 and runs copied standalone with no SIH imports. Test numbers and final results are in [UPDATE_REPORT.md](UPDATE_REPORT.md).
+The offline tests reject socket connections/DNS and mock Ollama responses. New tests cover both adapters, source-sized nonmutating visualization, actual Module 03 consumption, empty/mismatched frames, bounded/sampled chronology, direction-independent triggers, parser validation, configuration, unavailable Ollama/model, timeout/API/parse errors, bounded worker, reset races, camera structure, image/video writing and copying the module with forbidden SIH imports. The real runtime check blocks outbound networking, loads local weights, writes/reads a four-frame annotated MP4, verifies real backend ID persistence, passes Module 01 -> Module 02 -> Module 03 with a four-frame integrated annotated MP4 and runs copied standalone with no SIH imports. The original update results are in [UPDATE_REPORT.md](UPDATE_REPORT.md); current pre-freeze verification is in [PRE_FREEZE_REPORT.md](PRE_FREEZE_REPORT.md).
 
 Ollama smoke uses synthetic chronological red-square images. Its response verifies local transport/model/schema execution only. Detection/action accuracy, calibrated confidence, representative FPS, latency benchmarks, GPU behavior and physical webcam/display operation were **not measured/verified**. Camera handling is structurally tested; real image/video inference and saved outputs were verified. OpenCV cannot reliably distinguish a mid-video decode error from EOF. Rendering is opt-in in SIH mode; runtime users choose their display/writer.
 
 **Rotation-based ground demonstrations are only approximations of orientation-agnostic behavior and do not prove real microgravity performance.** A 2B VLM can make semantic mistakes. This is a hackathon prototype, with no flight certification, space qualification, microgravity validation, ISRO validation or safety certification. FSM sequencing, skipped steps, next-step suggestions, procedure validation and voice remain outside Module 02.
+
+## Pre-freeze verification and temporary files
+
+The configuration facade delegates to core.config; SIH config/result/exception types remain shared, while standalone keeps private contracts. The type verifier now checks all 31 active runtime files, rather than only the legacy facades:
+
+```powershell
+python -m yolo.tests.verify_types
+python -m ruff check 02_yolo
+python -m ruff format --check 02_yolo
+python -m compileall -q 02_yolo
+python -m yolo --help
+python 02_yolo/standalone.py --help
+```
+
+Large .verification dependency caches and historical verification outputs/audit were relocated outside Module 02. New runtime smoke outputs default to a fresh OS temporary directory; set ORBITA_VERIFY_DIR explicitly to preserve them at a chosen location. Type-check temporary copies/caches also stay outside Module 02. If pytest's default temporary directory is inaccessible, use --basetemp with a **new, dedicated temporary path** rather than changing tests or frozen modules.
