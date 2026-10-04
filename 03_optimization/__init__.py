@@ -1,5 +1,4 @@
-"""
-Spatial (pose/hands/skeleton/rack reference) and temporal (motion/interaction/gesture) processing -> OptimizationOutputPacket.
+"""Module 03 optimization sequence processing.
 
 Owner:
     Module 03 — Optimization Sequence (Teammates 3 and 4)
@@ -10,3 +9,7 @@ Note:
     documented in the root README.md. Do not add imports such as
     `from 02_yolo import ...`.
 """
+
+from .pipeline import OptimizationPipeline, OptimizationSequencePipeline
+
+__all__ = ["OptimizationPipeline", "OptimizationSequencePipeline"]

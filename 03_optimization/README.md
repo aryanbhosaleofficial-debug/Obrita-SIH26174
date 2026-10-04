@@ -1,6 +1,7 @@
 # Module 03 — Optimization Sequence Pipeline
 
-> Implementation status: **scaffold only**. Interfaces and responsibilities are defined; algorithms are not implemented.
+> Implementation status: functional offline baseline. The rule-based temporal layer is
+> independently testable and the pose/hand adapters are optional local MediaPipe hooks.
 
 ## Purpose
 
@@ -351,11 +352,11 @@ T4 → `test_motion.py`, `test_interaction.py`, `test_gesture.py`; both → `tes
 
 ## How to Run Independently
 
-Once implemented, from the repository root:
+From the repository root:
 
 ```bash
-python scripts/run_optimization.py                 # full Module 03
-python scripts/run_optimization.py --spatial-only  # Teammate 3 section only (planned flag)
+python -m 03_optimization
+python -c "import importlib; p=importlib.import_module('03_optimization.pipeline'); print(p.OptimizationPipeline().process(None, 1, 0.0, []))"
 ```
 
 Teammate 4 can develop against recorded / synthetic `SpatialFeaturePacket`s without waiting for
@@ -367,7 +368,9 @@ Teammate 3's models, because the hand-over is a plain shared dataclass.
 python -m pytest 03_optimization/tests
 ```
 
-All tests are currently skipped placeholders; each file lists its required cases.
+The baseline can be exercised with `python -m pytest 03_optimization/tests`.
+The component-level tests use synthetic inputs; model-backed tests should be run
+on a machine with the locally installed MediaPipe package.
 
 ## Integration Contract
 
