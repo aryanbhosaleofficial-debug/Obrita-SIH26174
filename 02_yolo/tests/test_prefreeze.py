@@ -50,9 +50,7 @@ def test_semantic_pipeline_close_reuse_processes_new_event(
     pipe = DetectorPipeline(
         DetectorConfig(backend="mock"),
         backend(rows),
-        semantic_config=SemanticConfig(
-            enabled=True, sample_every_frames=1, cooldown_s=0.1
-        ),
+        semantic_config=SemanticConfig(sample_every_frames=1, cooldown_s=0.1),
         verifier=verifier,
     )
     data = prepared(max_width=None).image

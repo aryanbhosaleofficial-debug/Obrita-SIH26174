@@ -343,6 +343,14 @@ def test_authoritative_chain_packets_and_boundary_rejects_mix(config, packet, sc
 def test_offline_chain_reuses_models_and_preserves_source(
     config, packet, scene, monkeypatch
 ):
+    # Default-on semantics probes localhost. Model the offline service failure
+    # without contacting a daemon or weakening the network prohibition below.
+    def unavailable_ollama(*args, **kwargs):
+        raise ConnectionRefusedError("local Ollama unavailable in offline fixture")
+
+    monkeypatch.setattr(
+        "yolo.semantic.qwen_verifier.QwenVerifier._request", unavailable_ollama
+    )
     monkeypatch.setattr(
         socket.socket,
         "connect",

@@ -51,7 +51,12 @@ def main(argv=None):
     parser.add_argument(
         "--tracking", action=argparse.BooleanOptionalAction, default=None
     )
-    parser.add_argument("--vlm", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--vlm",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="local event-triggered semantics (enabled by default; --no-vlm disables)",
+    )
     parser.add_argument("--ollama-host")
     parser.add_argument("--vlm-model")
     parser.add_argument("--no-display", action="store_true")

@@ -43,7 +43,7 @@ class SemanticResult:
 
 @dataclass(frozen=True)
 class SemanticConfig:
-    enabled: bool = False
+    enabled: bool = True
     model: str = "qwen3-vl:2b-instruct"
     host: str = "http://localhost:11434"
     timeout_s: float = 30.0

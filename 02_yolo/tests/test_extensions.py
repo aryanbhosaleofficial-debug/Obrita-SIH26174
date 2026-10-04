@@ -406,7 +406,11 @@ def test_pipeline_upstream_reset_clears_semantics_not_weights(
 
 
 def test_disabled_semantics_never_contacts_ollama(backend):
-    with DetectorPipeline(DetectorConfig(backend="mock"), backend()) as pipe:
+    with DetectorPipeline(
+        DetectorConfig(backend="mock"),
+        backend(),
+        semantic_config=SemanticConfig(enabled=False),
+    ) as pipe:
         for i in range(10):
             pipe.process(adapt_image(image(), i, float(i)))
         assert pipe.semantic.status == "DISABLED" and pipe.semantic._thread is None
@@ -436,7 +440,7 @@ def test_standalone_image_and_video_outputs(tmp_path, capsys):
         == 0
     )
     assert cv2.imread(str(annotated)).shape == image().shape
-    assert json.loads(logs.read_text())["vlm_status"] == "DISABLED"
+    assert json.loads(logs.read_text())["vlm_status"] != "DISABLED"
     video, out = tmp_path / "input.mp4", tmp_path / "annotated.mp4"
     writer = cv2.VideoWriter(
         str(video), cv2.VideoWriter_fourcc(*"mp4v"), 10, (200, 120)

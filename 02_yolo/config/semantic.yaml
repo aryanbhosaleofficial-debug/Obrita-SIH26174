@@ -1,5 +1,5 @@
 semantic:
-  enabled: false
+  enabled: true
   model: qwen3-vl:2b-instruct
   host: http://localhost:11434
   timeout_s: 30.0
