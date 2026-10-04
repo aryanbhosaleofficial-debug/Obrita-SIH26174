@@ -1,0 +1,48 @@
+# =============================================================================
+# camera.yaml — Module 01 Perception Core
+#
+# PLACEHOLDER CONFIGURATION. Values set to null must be chosen by the team and
+# verified on the actual demo hardware. Requested values are requests only:
+# the driver may deliver something else, and Module 01 must log the ACTUAL
+# values it receives.
+# =============================================================================
+
+source:
+  # "camera" for a live device or "video" for a local recorded file (offline replay).
+  type: camera
+  # OS camera index used when type == camera (e.g. 0 for the first camera).
+  camera_index: null
+  # Path relative to the repository root, used when type == video
+  # (e.g. data/videos/<file>). No absolute paths.
+  video_path: null
+  # Identifier copied into FramePacket.source_id.
+  source_id: camera_0
+  # Set true if the image is horizontally mirrored (affects handedness in Module 03).
+  mirrored: false
+
+capture:
+  requested_width: null     # pixels
+  requested_height: null    # pixels
+  requested_fps: null       # frames per second requested from the driver
+  # OpenCV backend name if a specific backend is needed (null = OpenCV default).
+  backend: null
+
+buffering:
+  # Number of recent FramePackets kept for lookup by frame_id (Modules 03/04).
+  frame_buffer_size: null
+  # Maximum queued packets between modules.
+  packet_queue_size: null
+  # What to do when a queue is full: "drop_oldest" or "block".
+  overflow_policy: null
+
+recording:
+  # Save raw frames / video to outputs/recordings/.
+  enabled: false
+  output_dir: outputs/recordings
+  # Save annotated debug frames to outputs/debug_frames/.
+  save_debug_frames: false
+  debug_frames_dir: outputs/debug_frames
+
+health:
+  # Log measured per-module timings to logs/.
+  log_timings: true

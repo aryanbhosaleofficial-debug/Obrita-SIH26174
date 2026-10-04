@@ -1,0 +1,47 @@
+# =============================================================================
+# yolo.yaml — Module 02 YOLO
+#
+# PLACEHOLDER CONFIGURATION. Thresholds are intentionally null: they must be
+# chosen and validated on the team's own demo data. Nothing here is a
+# validated value.
+# =============================================================================
+
+model:
+  # Local weights file, relative to the repository root (e.g. 02_yolo/models/<file>.pt).
+  # The model is NEVER downloaded automatically; a missing file is an error.
+  path: null
+  # Model input size in pixels (square side), must match the trained model.
+  input_size: null
+  # "cpu" or a local GPU device id such as "cuda:0".
+  device: cpu
+
+detection:
+  confidence_threshold: null   # [0.0, 1.0]
+  iou_threshold: null          # [0.0, 1.0] used for NMS
+  # Optional per-class overrides: {class_name: threshold}
+  per_class_confidence: {}
+  # Class names allowed downstream; must exist in configs/classes.yaml.
+  # Empty list = use all classes defined in classes.yaml.
+  allowed_classes: []
+
+tracking:
+  enabled: true
+  # Tracker approach (integration decision, must run offline). null = not yet chosen.
+  method: null
+  # Frames a track may be missing before it becomes "lost".
+  max_lost_frames: null
+  # Frames after which a lost track is removed.
+  max_removed_frames: null
+  # Association threshold used by the chosen tracker.
+  match_threshold: null
+
+stability:
+  # An object is "stable" when detected in at least `min_hits` of the last `window` frames.
+  window: null
+  min_hits: null
+
+reference_anchors:
+  # Anchor roles are defined in configs/classes.yaml (reference_roles).
+  enabled: true
+  # Minimum confidence for a detection to be used as a reference anchor.
+  min_confidence: null

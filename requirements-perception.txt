@@ -1,0 +1,5 @@
+# Standalone Module 01 + mocks + tests; Python 3.11+.
+numpy
+opencv-python
+PyYAML
+pytest
