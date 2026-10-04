@@ -1,9 +1,9 @@
 # =============================================================================
-# camera.yaml — Module 01 Perception Core
+# camera.yaml — future external frame-source application
 #
 # PLACEHOLDER CONFIGURATION. Values set to null must be chosen by the team and
 # verified on the actual demo hardware. Requested values are requests only:
-# the driver may deliver something else, and Module 01 must log the ACTUAL
+# the driver may deliver something else, and the capture application must log the ACTUAL
 # values it receives.
 # =============================================================================
 

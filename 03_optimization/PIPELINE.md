@@ -1,3 +1,8 @@
+> Historical team plan; partially implemented. Current ownership, active entry points
+> and implementation limits are defined in this module README and
+> [perception/INTEGRATION.md](../perception/INTEGRATION.md). Module 01 publishes
+> PreparedFrame; continuity/confirmation and rack calibration belong to Module 03.
+
 # Module 03 — Optimization Sequence Pipeline
 
 ## Overview

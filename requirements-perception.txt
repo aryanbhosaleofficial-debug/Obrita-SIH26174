@@ -1,5 +1,5 @@
-# Standalone Module 01 + mocks + tests; Python 3.11+.
+# Foundation + stage-chain mocks + ArUco demo/tests; Python 3.11+.
 numpy
-opencv-python
+opencv-contrib-python>=4.7
 PyYAML
 pytest

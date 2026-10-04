@@ -10,11 +10,12 @@
 
 # Core (Modules 01-05)
 numpy
-opencv-python
+opencv-contrib-python>=4.7
 PyYAML
 
 # Module 02 — YOLO detection / tracking (loads local weights only; no auto-download)
 ultralytics
+lap>=0.5.12  # Local Ultralytics tracker assignment dependency; install before offline use.
 # PyTorch backend for ultralytics. Choose the CPU or CUDA build that matches the
 # demo machine (see https://pytorch.org for the correct install command).
 torch

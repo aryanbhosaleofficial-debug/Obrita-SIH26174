@@ -1,6 +1,7 @@
 -r requirements-perception.txt
 # Optional real backends; install a matching CPU/CUDA torch build for hardware.
 ultralytics
+lap>=0.5.12
 mediapipe
 # Install only one OpenCV wheel family if your MediaPipe distribution requires
 # opencv-contrib-python; see perception/README.md for the isolated environment.

@@ -20,7 +20,8 @@ def test_generic_candidates_and_missing_identity(scene):
     }
     assert all(c.object_id is None and not c.identity_reliable for c in candidates)
     rows[0].ambiguous = True
-    assert interaction_candidates(detections, hands, rows) == []
+    ambiguous = interaction_candidates(detections, hands, rows)
+    assert ambiguous and all(c.ambiguous for c in ambiguous)
 
 
 def test_leaving_requires_previously_near(scene):
@@ -32,6 +33,7 @@ def test_leaving_requires_previously_near(scene):
     rows[0].distance_trend = DistanceTrend.RETREATING
     assert interaction_candidates(detections, hands, rows) == []
     rows[0].previously_near = True
+    rows[0].leaving_transition = True
     assert (
         interaction_candidates(detections, hands, rows)[0].interaction_type
         == InteractionType.LEAVING
@@ -41,4 +43,4 @@ def test_leaving_requires_previously_near(scene):
 def test_confidence_missing_components_are_not_fabricated():
     confidence = combine_confidence(0.9, None, 0.8)
     assert confidence.tracker is None and confidence.final == 0.8
-    assert combine_confidence().final == 0
+    assert combine_confidence().final is None

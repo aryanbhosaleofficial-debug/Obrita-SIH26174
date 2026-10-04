@@ -17,7 +17,6 @@ Coordinate systems:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
 
 from shared.enums.module_status import ModuleStatus
 
@@ -26,11 +25,11 @@ from shared.enums.module_status import ModuleStatus
 class Landmark:
     x_px: float
     y_px: float
-    z_rel: Optional[float] = None
+    z_rel: float | None = None
     # Relative depth (see module docstring). None when unavailable.
 
-    visibility: Optional[float] = None
-    presence: Optional[float] = None
+    visibility: float | None = None
+    presence: float | None = None
     # Model scores in [0.0, 1.0] when provided by the model.
 
     is_valid: bool = True
@@ -38,29 +37,11 @@ class Landmark:
     # True when filled in by missing-landmark handling, not observed.
 
 
-@dataclass
-class HandLandmarks:
-    handedness: Literal["left", "right", "unknown"]
-    handedness_score: Optional[float]
-    landmarks: list[Landmark] = field(default_factory=list)
-    # Ordered by the chosen hand model's landmark indices.
+from shared.schemas.observations import HandObservation as HandLandmarks
+from shared.schemas.observations import ReferenceFrameInfo
 
-
-@dataclass
-class RackReference:
-    origin_px: tuple[float, float]
-    # Rack/payload reference origin in original-frame pixels.
-
-    x_axis: tuple[float, float]
-    y_axis: tuple[float, float]
-    # Unit vectors in the image plane defining rack-relative axes.
-
-    scale_px_per_unit: Optional[float] = None
-    # Pixels per rack-relative unit; None unless a scale reference is defined.
-
-    source_anchor_track_id: Optional[int] = None
-    is_valid: bool = False
-    # False when no reliable anchor exists. Consumers must not substitute camera "up".
+# One reference metadata contract; legacy import remains an alias.
+RackReference = ReferenceFrameInfo
 
 
 @dataclass
@@ -71,7 +52,7 @@ class SpatialFeaturePacket:
     # Copied unchanged from FramePacket / ObjectFrame.
 
     # Optional ---------------------------------------------------------------
-    target_track_id: Optional[int] = None
+    target_track_id: int | None = None
     # track_id (from ObjectFrame) of the operator whose pose is described.
 
     pose_landmarks: list[Landmark] = field(default_factory=list)
@@ -80,8 +61,15 @@ class SpatialFeaturePacket:
     skeleton_bones: list[tuple[int, int]] = field(default_factory=list)
     # Landmark index pairs present in this frame (from skeleton/ connection tables).
 
-    rack_reference: Optional[RackReference] = None
-    rack_relative_pose: list[tuple[float, float, Optional[float]]] = field(default_factory=list)
+    rack_relative_pose: list[tuple[float, float, float | None]] = field(
+        default_factory=list
+    )
     # Pose landmarks in rack-relative coordinates (x, y, z_rel); same order as pose_landmarks.
 
     status: ModuleStatus = ModuleStatus.OK
+    reference_frame: ReferenceFrameInfo = field(default_factory=ReferenceFrameInfo)
+
+    @property
+    def rack_reference(self) -> ReferenceFrameInfo | None:
+        """Compatibility view of the authoritative reference_frame field."""
+        return self.reference_frame if self.reference_frame.valid else None

@@ -1,0 +1,5 @@
+# Authoritative real stage chain. Set actual classes/weights; print the four rack markers.
+pipeline:
+  core: perception.yaml
+  yolo: yolo.yaml
+  optimization: optimization.yaml

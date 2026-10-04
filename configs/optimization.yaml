@@ -1,76 +1,41 @@
-# =============================================================================
-# optimization.yaml — Module 03 Optimization Sequence
-#
-# PLACEHOLDER CONFIGURATION. All thresholds are null until tuned on demo data.
-# Depth from a monocular pose/hand model is RELATIVE (pseudo-3D), not metric.
-#
-# Sections owned by Teammate 3 (spatial): roi, pose, hands, landmarks, rack_reference
-# Sections owned by Teammate 4 (temporal): motion, temporal, gesture, interaction, quality
-# =============================================================================
-
-# ---------------------------------------------------------------- Teammate 3
-roi:
-  human_padding_ratio: null   # fraction of bbox size added around the operator box
-  hand_padding_ratio: null
-
-pose:
-  # Local model file path (relative to repo root). No runtime download.
-  model_path: null
-  min_landmark_confidence: null   # [0.0, 1.0]
-  min_visibility: null            # [0.0, 1.0]
-  min_presence: null              # [0.0, 1.0]
-
-hands:
-  model_path: null
-  max_hands: null
-  min_landmark_confidence: null
-  # Taken from camera.yaml source.mirrored when null.
-  mirrored: null
-
-landmarks:
-  smoothing:
-    enabled: true
-    method: null          # smoothing filter name, chosen during implementation
-    params: {}
-  # Maximum consecutive frames a missing landmark may be interpolated.
-  max_interpolation_frames: null
-  # Single-frame jump (normalized units) above which a landmark is treated as an outlier.
-  outlier_jump_threshold: null
-
-rack_reference:
-  # Anchor role used to build the rack frame (must exist in classes.yaml reference_roles).
-  anchor_role: null
-  # Frames the reference must be consistent before it is marked valid.
-  min_consistent_frames: null
-  # If no valid reference: mark rack-relative outputs invalid (no camera-"up" fallback).
-  allow_camera_up_fallback: false
-
-# ---------------------------------------------------------------- Teammate 4
-motion:
-  # Joint angles to compute: list of [landmark_a, landmark_vertex, landmark_b] names.
-  joint_angles: []
-
-temporal:
-  window_frames: null            # sliding window length
-  confirmation_min_hits: null    # N in N-of-M confirmation
-  confirmation_window: null      # M in N-of-M confirmation
-  hysteresis_frames: null
-
-gesture:
-  method: null                   # "rules" or a local model; chosen during implementation
-  # Configurable label set. Placeholders only — define per experiment.
-  labels:
-    - unknown
-    - PLACEHOLDER_GESTURE
-  min_confidence: null
-
+# Module 03 demo defaults, configurable and not performance-validated.
+hand_tracker:
+  enabled: true
+  backend: mediapipe
+  model_path: ../models/hand_landmarker.task
+  max_hands: 2
+  min_detection_confidence: 0.5
+  min_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+  mirrored: false
+reference_frame:
+  enabled: true
+  type: aruco
+  reference_id: rack_markers_0_1_2_3
+  aruco_dictionary: DICT_4X4_50
+  marker_ids: [0, 1, 2, 3]
 interaction:
-  # Distances are normalized / rack-relative, not metric.
-  near_distance: null
-  touch_distance: null
-  approach_velocity_threshold: null
-
-quality:
-  min_visible_pose_landmarks: null
-  min_visible_hand_landmarks: null
-  require_valid_rack_reference: true
+  context_classes: [rack, experiment_board, payload]
+  leaving_window_ms: 500
+  motion_speed_threshold: 0.02
+  rack_relative:
+    proximity_threshold: 0.08
+    contact_threshold: 0.03
+    ambiguity_margin: 0.01
+    trend_speed_threshold: 0.05
+  image_diagonal:
+    proximity_threshold: 0.06
+    contact_threshold: 0.02
+    ambiguity_margin: 0.008
+    trend_speed_threshold: 0.04
+stabilization:
+  detection_min_frames: 3
+  interaction_min_frames: 4
+  max_missing_frames: 2
+  ema_alpha: 0.5
+  matching_iou_threshold: 0.3
+  hand_matching_distance: 0.1
+  max_time_gap_s: 1.0
+debug:
+  draw_detections: true
+  draw_hands: true

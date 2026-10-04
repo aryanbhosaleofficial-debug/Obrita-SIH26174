@@ -1,17 +1,5 @@
-"""
-Input validation for Module 04.
+"""Module 04 receiving contract; segmentation/target policy belongs downstream."""
 
-Implementation status:
-    Scaffold only.
+from .contract_validator import BoundaryInputError, validate_boundary_input
 
-Input:
-    Synchronized packet pair
-
-Output:
-    Validated pair or rejection reason
-
-Owner:
-    Module 04 — Boundary Detection
-"""
-
-# TODO: Check ModuleStatus, quality_ok and presence of a target object.
+__all__ = ["BoundaryInputError", "validate_boundary_input"]

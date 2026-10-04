@@ -1,12 +1,7 @@
-"""
-Camera acquisition, frame metadata, synchronization, buffering and pipeline orchestration.
+# ruff: noqa: N999
+# Preserve the team's numbered directory; it is not imported as a Python identifier.
+"""Historical Module 01 folder; active frame foundation lives in perception.core.
 
-Owner:
-    Module 01 — Perception Core
-
-Note:
-    The top-level directory name starts with a digit, so it cannot be imported
-    with a normal `import` statement. The integration-time loading strategy is
-    documented in the root README.md. Do not add imports such as
-    `from 02_yolo import ...`.
+See perception/INTEGRATION.md. Camera/buffer/orchestration placeholders in this
+folder are inactive and no longer define Module 01 ownership.
 """

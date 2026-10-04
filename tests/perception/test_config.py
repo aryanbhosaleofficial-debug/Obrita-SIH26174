@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_shipped_configs_and_relative_model_paths():
-    real = PerceptionConfig.from_yaml(ROOT / "configs/perception.yaml")
+    real = PerceptionConfig.from_yaml(ROOT / "configs/perception_demo.yaml")
     mock = PerceptionConfig.from_yaml(ROOT / "configs/perception_mock.yaml")
     assert real.detector.model_path == ROOT / "02_yolo/models/experiment_objects.pt"
     assert real.hand_tracker.model_path == ROOT / "models/hand_landmarker.task"
@@ -28,7 +28,7 @@ def test_shipped_configs_and_relative_model_paths():
         "perception:\n  detector:\n    confidence_threshold: 1.1",
         "perception:\n  hand_tracker:\n    max_hands: 0",
         "perception:\n  reference_frame:\n    enabled: true",
-        "perception:\n  reference_frame:\n    type: aruco",
+        "perception:\n  reference_frame:\n    type: unknown",
         "perception:\n  stabilization:\n    ema_alpha: 0",
         "perception:\n  interaction:\n    contact_threshold: .5",
         "perception:\n  detector:\n    cpu_fallback: 'false'",
