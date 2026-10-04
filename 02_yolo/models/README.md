@@ -1,32 +1,11 @@
-# YOLO Model Weights
+# Local Module 02 models
 
-Place local YOLO weight files here (for example `<name>.pt` or `<name>.onnx`).
+`best.pt` is the local prototype YOLOv8n detection checkpoint extracted explicitly from `../HAR.zip` by `python 02_yolo/tools/extract_har_model.py` (run from the repository root). It is Git-ignored, so distribute it with the standalone directory or supply `--weights` separately. The extraction script verifies the audited size and SHA-256 and does not execute pickle code. Model metadata was inspected statically before subsequent real inference verification.
 
-- Weight files are **not committed** (`*.pt`, `*.onnx`, `*.engine` are in `.gitignore`).
-  Share them through the team's agreed offline channel.
-- `configs/yolo.yaml` -> `detector.model_path` points to the file relative to the
-  YAML file's directory, e.g. `../02_yolo/models/experiment_objects.pt`.
-  Constructor and CLI paths are relative to the current directory.
-- The pipeline must **never** download a model automatically. If the file is missing,
-  Module 02 must fail with a clear error.
+The active HAR class map is `../config/har_classes.yaml`: 0 lid, 1 main_box, 2 red_box, 3 yellow_box. The matching detector profile is `../config/standalone.yaml`. Paths in detector YAML are relative to its directory. Existing `configs/yolo.yaml` remains a separate project profile with its original class expectations; it does not automatically switch models.
 
-The configured experiment weights are absent. Supply them locally and replace
-null placeholder IDs in `configs/classes.yaml` with the exact weight ID/name map.
-Startup rejects mismatches; there is no generic downloaded-model fallback.
-Supported formats are `.pt` and `.onnx`; ONNX requires a preinstalled runtime.
+`HAR/weights.pt` is a different YOLO26n checkpoint with five classes (HAR, Lid, main_box, red_box, yellow_box). Prototype main.py does not use it. It remains in the archive and is not needed for the default demo. Do not rename it to best.pt or combine its class IDs with the four-class map.
 
-Use trusted team checkpoints: framework-required `.pt` deserialization stays
-inside Ultralytics. The loader is not an untrusted-file sandbox. The optional
-offline smoke uses temporary random weights and provides no accuracy measurements.
+Runtime never downloads models. Install dependencies and explicitly obtain trusted local weights before offline operation. ONNX is supported by the reviewed adapter when onnxruntime is separately installed. Qwen weights belong to Ollama's local model store, not this directory. Both supplied YOLO checkpoints carry Ultralytics AGPL license metadata.
 
-## Model record (fill in for each model used)
-
-| Field | Value |
-|-------|-------|
-| File name | TBD |
-| Architecture / variant | TBD |
-| Classes (must match `configs/classes.yaml`) | TBD |
-| Input size | TBD |
-| Training data (source, size) | TBD — only record measured facts |
-| Evaluation results | TBD — only record measured results, with the evaluation data used |
-| Date / author | TBD |
+See [the Module 02 README](../README.md) and [implementation report](../UPDATE_REPORT.md) for setup, verification and limitations.

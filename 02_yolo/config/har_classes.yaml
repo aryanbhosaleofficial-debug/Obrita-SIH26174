@@ -1,0 +1,5 @@
+classes:
+  - {id: 0, name: lid}
+  - {id: 1, name: main_box}
+  - {id: 2, name: red_box}
+  - {id: 3, name: yellow_box}

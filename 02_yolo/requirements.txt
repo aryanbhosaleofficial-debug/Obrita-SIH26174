@@ -1,0 +1,6 @@
+numpy
+opencv-python
+PyYAML
+# Install before offline use, including a hardware-appropriate Torch build.
+ultralytics
+lap>=0.5.12
