@@ -1,335 +1,349 @@
-# Module 02 repair report - 2026-10-04
+# Module 02 minor-fix repair report
 
-## Module 02 status
+Date: 2026-10-04. Baseline: e33b21b (Module 02); working tree was clean.
+Overall status: **READY FOR FINAL REVIEW**.
 
-**COMPLETE** for the implemented software boundary and model-free integration.
-**Native deployment verification remains blocked** by Windows Application Control
-rejecting torch.dll (WinError 4551). Real trained detection, physical GPU execution
-and an actual disconnected-camera demonstration are not claimed complete.
-The required local trained model and final class IDs must be supplied by the team.
+All eight reviewer findings were independently checked. Four Medium findings are
+resolved with targeted changes; safe Low fixes are implemented. Native inference
+is not verified in this environment. Final trained weights/class IDs remain
+external deployment deliverables and do not block unit-level review readiness.
 
-The tree already contained staged/unstaged Module 02 implementation changes at
-inspection. They were reviewed, preserved and extended; the inventories below
-describe the complete deliverable relative to HEAD, not exclusive authorship.
-No commit, dependency installation or large model addition was performed.
+The earlier implementation report is preserved in Git at e33b21b. This report
+supersedes its current behavior/test-count statements; it does not reuse old
+verification results. No dependency policy change, model addition, Module 01
+algorithm change, Module 03 algorithm change or shared packet shape change occurred.
 
-## Architecture confirmed
+## Architecture after repair
 
 ```text
-External FramePacket
- -> Module 01 perception.core.FrameProcessor.process
- -> shared.schemas.PreparedFrame
- -> Module 02 yolo.pipeline.YoloPipeline.process
-    -> prepared image/scale checks
-    -> local Ultralytics predict / configured optional backend track
-    -> parse_results -> canonical Detection in prepared pixels
-    -> confidence/class filter + box validation/diagnostic clipping
-    -> PreparedFrame.source_detection (exactly once)
- -> shared.schemas.ObjectFrame (original-source pixels)
- -> Module 03 optimization.pipeline.OptimizationPipeline.process(prepared, objects)
- -> shared.schemas.OptimizationOutputPacket
+External FramePacket -> Module 01 FrameProcessor -> canonical PreparedFrame
+ -> Module 02 YoloPipeline
+    -> existing local backend/model-specific adaptation
+    -> parse/filter/validate prepared-pixel observations
+    -> PreparedFrame.source_detection() once
+    -> source-bound roundoff correction (no second scaling)
+ -> canonical original-pixel ObjectFrame
+ -> Module 03 OptimizationPipeline -> OptimizationOutputPacket
 ```
 
-The newer perception/INTEGRATION.md decision overrides obsolete numbered scaffold
-plans. Module 01 and all shared schemas were retained unchanged. Module 03's
-existing implementation is exercised without replacing its algorithms. Its
-separate input/input_validator.py remains a teammate scaffold; integration tests
-target its active OptimizationPipeline consumer and metadata checks instead.
+**No architectural boundary change.** Shared definitions remain:
+PreparedFrame in shared/schemas/prepared_frame.py, ObjectFrame in
+shared/schemas/object_frame.py, Detection/BoundingBox in
+shared/schemas/observations.py. Source metadata is unchanged. Offline guards,
+local weights, empty results, lazy one-time model loading and backend isolation
+remain intact.
 
-## Files changed
+## M02-R01 - MEDIUM - FIXED
 
-Paths below are relative to the repository root. Every modified tracked file in
-this deliverable is listed; unrelated modules are unchanged.
+Classification: MODULE 02 LOCAL FIX + CONFIG CHANGE / INTEGRATION OWNER SIGN-OFF.
 
-| File | Change and reason |
+Evidence: configs/yolo.yaml had tracking=true and confidence_threshold=0.50;
+configs/yolo_tracker.yaml had new_track_thresh=0.60. Installed Ultralytics 8.4.165
+byte_tracker.py separates high scores with >= track_high_thresh and does not
+start unmatched tracks below new_track_thresh. trackers/track.py retains raw
+results when zero tracks return but selects tracker rows when tracks exist,
+confirming the reported state-dependent result semantics. See the primary
+[ByteTrack reference](https://docs.ultralytics.com/reference/trackers/byte_tracker/)
+and [tracker callbacks](https://docs.ultralytics.com/reference/trackers/track/).
+
+Resolution: keep tracking enabled, as permitted by current integration contracts
+and useful for supplied backend identity. Change only new_track_thresh to 0.50.
+Module 02 startup rejects either high/new threshold above detector confidence
+when tracking is enabled. Disabled tracking does not consume tracker YAML.
+This is logical consistency, not experimentally optimal tuning. Track association
+and confirmation can still legitimately affect which detections appear.
+
+Files: configs/yolo_tracker.yaml; 02_yolo/config.py; inference/detector.py;
+tests/test_tracking.py; tests/test_yolo_backend.py; README; integration owner notes.
+
+Tests: default thresholds, high/new mismatch rejection, equal/lower new threshold
+acceptance, actual initialization rejection before model loading, and disabled
+tracking initialization despite unused inconsistent tracker settings.
+
+## M02-R02 - MEDIUM - FIXED
+
+Classification: MODULE 02 LOCAL FIX.
+
+Evidence: existing fallback called model.to("cpu") for .pt or set predictor=None
+for .onnx. Installed Ultralytics engine/model.py::_apply clears predictor when
+model tensors are converted. Recreated trackers can restart integer IDs;
+Module 03 stabilizer associates supplied identities by class_id + track_id.
+A transparent rebuild could therefore preserve incorrect downstream continuity.
+
+Resolution: any recognized accelerator inference failure with tracking enabled
+latches a controlled failure. No model movement, CPU retry, predictor recreation
+or valid detection packet occurs. YoloPipeline emits ERROR and empty detections.
+Subsequent calls stay ERROR without invoking inference until an explicit reset.
+Reset the enclosing processing chain, or use the existing upstream reset_required
+signal so both detector and Module 03 histories reset. A local detector-only reset
+while retaining downstream state is unsafe and explicitly documented. To switch
+devices, restart the coordinated chain with CPU configuration.
+
+CPU fallback at startup remains possible before any history exists. Untracked
+runtime inference retains accelerator-to-CPU retry. No new status or reset signal
+was introduced; Module 03 code is unchanged.
+
+Files: inference/detector.py; tests/test_tracking.py; README; PIPELINE; DOD.
+
+Tests: .pt/.onnx and cpu_fallback true/false tracked failures all produce ERROR,
+keep predictor/device, perform no CPU movement, and block a later apparently
+reused ID until explicit reset. Separate untracked .pt/.onnx tests preserve CPU
+retry. Actual Module 03 integration verifies reset removes confirmation history.
+
+## M02-R03 - MEDIUM - FIXED
+
+Classification: SCHEMA/INTEGRATION DOCUMENTATION ALIGNMENT; owner review material
+is prepared in [INTEGRATION_OWNER_NOTES.md](INTEGRATION_OWNER_NOTES.md).
+
+Evidence: shared ObjectFrame reference_anchors is optional with an empty-list
+default and no required-population rule. Active Module 02 leaves it empty.
+INTEGRATION.md assigns calibration to Module 03; active OptimizationPipeline
+uses a manual/ArUco coordinate_transformer and never reads that list. Old
+classes.yaml/scaffold/Module 03 planning comments implied an anchor producer.
+
+Decision: ReferenceAnchor/reference_anchors are reserved shared compatibility
+leaves with no active semantic producer. Current Module 02 publishes [] even
+for rack detections. Reference derivation/calibration belongs to Module 03,
+published as ReferenceFrameInfo via SpatialFeaturePacket.reference_frame.
+Empty legacy anchors do not mean reference loss.
+
+Files: shared/schemas/object_frame.py (comments/docstring only);
+perception/INTEGRATION.md; configs/classes.yaml (comments only);
+03_optimization/PIPELINE.md and DEFINITION_OF_DONE.md (historical-plan notices);
+Module 02 docs/deprecated scaffold notices and tests/test_object_frame.py.
+
+Migration: none. Field names/types/defaults and serialized shape are unchanged.
+Any future producer/consumer requires a new explicit integration decision, not
+an inferred TODO implementation. No semantic rack calibration was added to YOLO.
+
+Test: actual Module 03 manual calibration succeeds and publishes valid reference
+information while both input/output legacy anchor lists remain empty.
+
+## M02-R04 - MEDIUM - FIXED
+
+Classification: MODULE 02 LOCAL FIX.
+
+Evidence: opened test_tracking.py; all five tests were module-level skipped
+NotImplementedError placeholders, with no implementation or fixture. Physical
+crossing/lost/reacquired claims require footage and are not the active adapter API.
+They were replaced with executable tests of the actual owned boundary.
+
+Files: tests/test_tracking.py; tests/test_yolo_backend.py; README; DOD.
+
+Coverage now executes: supplied ID persistence/change, None identity notices,
+disabled tracking using predict and discarding IDs, healthy empty tracking frames
+without fabricated lost objects, tracker/model lifecycle, default/invalid/equal
+thresholds, disabled tracker validation, coordinated reset and accelerator fallback.
+
+Module 02 now has **zero skipped tests**. Physical tracking quality remains an
+explicit evaluation limitation; no mocked test claims to measure ByteTrack
+crossing, loss/reacquisition or recognition accuracy.
+
+## M02-R05 - LOW - FIXED
+
+Classification: MODULE 02 LOCAL FIX.
+
+Reproduction used real Module 01 preparation: source 745 x 480, max_width 640,
+prepared shape 412 x 640; inverse scaling returned y2=480.00000000000006.
+Resolution: clamp_source_box runs only AFTER source_detection. It corrects
+excursions within four floating-point ULPs of the source bound and preserves
+strictly positive area. Material excursions, nonfinite values or collapsed boxes
+raise BackendOutputError and produce a controlled frame ERROR.
+
+Files: inference/postprocess.py; pipeline.py; tests/test_coordinate_restore.py;
+README; PIPELINE; DOD.
+
+Tests: exact full-frame source bounds for the reviewer case, plus rejection of
+a one-pixel overshoot, a materially negative coordinate and collapsed area.
+No new scaling/preparation stage or upstream transform modification was added.
+
+## M02-R06 - LOW - FIXED (ownership documentation)
+
+Classification: INTEGRATION OWNER SIGN-OFF; script implementation unchanged.
+
+Evidence: scripts/run_yolo.py is already committed in e33b21b. It correctly
+delegates to the canonical yolo.cli and is referenced by README.
+Both module and script --help commands run successfully from repository root.
+
+Resolution: retain the working wrapper; document the historical integration
+ownership exception and sign-off requirement in INTEGRATION_OWNER_NOTES.md.
+No message to another owner, external sign-off or script rewrite is claimed.
+
+Files: new INTEGRATION_OWNER_NOTES.md; README and this report only.
+Verification: script remains absent from this repair's Git diff.
+
+## M02-R07 - LOW - FIXED
+
+Classification: MODULE 02 LOCAL FIX.
+
+Evidence: runtime/reset failures previously logged only at DEBUG.
+Resolution: one WARNING on entry into a failure episode, subsequent failures at
+DEBUG, and INFO on the next successful inference. Structured packet diagnostics
+continue every frame. Invalid upstream input does not falsely announce recovery.
+This uses one instance-local Boolean under the existing pipeline lock, not a
+new logging framework or per-frame warnings.
+
+Files: pipeline.py; tests/test_yolo_stage.py; README; DOD.
+
+Tests: repeated inference failures, recovery, a second failure episode and
+repeated reset failure/recovery all assert exact warning/debug/recovery counts.
+
+## M02-R08 - LOW - FIXED
+
+Classification: MODULE 02 DOCUMENTATION FIX.
+
+Evidence: repository-wide import/path searches found no active use of twenty
+old scaffold leaves. AST inspection confirms all twenty contain only docstrings
+and comments, with no executable definitions/imports. Package paths remain
+retained; each now begins with DEPRECATED / UNUSED and explicitly marks the old
+plan as historical. No file or compatibility path was blindly deleted.
+
+All twenty are listed in the file inventory below. Module 01 remains responsible
+for generic resize/color/equalization; Ultralytics for model-specific adaptation;
+Module 03 for temporal confirmation and calibration.
+
+Threshold documentation was also corrected: installed Ultralytics 8.4.165 NMS
+uses strict confidence > threshold, while the project's post-filter uses >=.
+Injected equality tests only establish the latter. NMS was not reimplemented.
+See the [primary NMS reference](https://docs.ultralytics.com/reference/utils/nms/).
+
+Dependency requirements intentionally remain unpinned per existing repository
+policy. Installed version 8.4.165 is recorded as the version whose source was
+inspected; native runtime verification on it remains blocked, not claimed passed.
+
+## Tracking behavior after repair
+
+| Item | Exact behavior |
 |---|---|
-| 02_yolo/__init__.py | Correct ownership description: PreparedFrame input, local detection, Module 03 stability/calibration |
-| 02_yolo/pipeline.py | Snapshot configuration, validate inference prerequisites, serialized lifecycle, once-only initialization, diagnostic runtime/reset recovery, canonical metadata/coordinate conversion, no partial failed output; drain backend warnings on failed frames to avoid contaminating recovery |
-| 02_yolo/inference/detector.py | Local backend lifecycle, strict config/device/tracker startup, offline import checks, CPU retry, parser isolation, validated clipping and Python-float geometry; selected device also passed into exported-model metadata setup |
-| 02_yolo/inference/postprocess.py | Real external Results conversion with finite scores/IDs, deterministic mapping, batch/array/shape validation; avoids undoing library letterbox twice |
-| 02_yolo/inference/class_map.py | Validate model class-map shape, IDs/names and exact agreement with local project mapping |
-| 02_yolo/tests/test_coordinate_restore.py | Replace inactive cases with actual prepared-to-source restoration, edge, portrait/landscape framework coordinates and rounded-scale tests |
-| 02_yolo/tests/test_detection.py | Activate confidence/class/box/empty/missing-weight regressions |
-| 02_yolo/tests/test_object_frame.py | Activate contract/metadata/original-coordinate checks; prove confirmation belongs to Module 03 |
-| 02_yolo/tests/test_tracking.py | Explain five retained skipped footage-evaluation cases; avoid claiming untested physical identity/lifecycle quality |
-| 02_yolo/README.md | Document actual architecture, contracts, installation, local assets, config/devices/classes, coordinates, lifecycle, errors, CLI/testing and verification limits |
-| 02_yolo/PIPELINE.md | Replace obsolete competing preprocessing/stability plan with active owner path |
-| 02_yolo/DEFINITION_OF_DONE.md | Align acceptance with authoritative contracts; separate implemented behavior from unresolved deployment/evaluation gates |
-| 02_yolo/models/README.md | Fix actual detector.model_path key and YAML-relative path behavior; explain absent weights/classes and supported local formats |
-| scripts/run_yolo.py | Existing convenience launcher delegates to the canonical Module 02 CLI rather than a scaffold path |
+| Repository YAML default | tracking=true; shared programmatic DetectorConfig default remains false |
+| Detector confidence | 0.50 in configs/yolo.yaml |
+| Tracker thresholds | track_high_thresh=0.50, new_track_thresh=0.50; both must be <= detector confidence when enabled |
+| Tracked accelerator failure | ERROR/empty; no CPU retry/rebuild; inference paused until coordinated reset |
+| Untracked accelerator failure | Existing permitted CPU retry and CPU_FALLBACK warning |
+| Startup unavailable accelerator | Existing cpu_fallback policy can select CPU before histories exist |
+| Reset | Existing upstream signal resets detector and Module 03; detector model retained where possible |
+| Identity | Only supplied IDs; None valid; IDs can be reused after reset; no global physical identity, lost-object prediction or crossing-quality guarantee |
 
-## Files added
+## Verification commands and actual results
 
-| File | Purpose |
-|---|---|
-| 02_yolo/.gitignore | Ignore local verification assets/caches without changing global repository ignore policy |
-| 02_yolo/__main__.py | python -m yolo delegates to the same smoke CLI |
-| 02_yolo/cli.py | Local single-image Module 01 -> Module 02 smoke, JSON output and defined exit codes |
-| 02_yolo/config.py | Strict detector-only YAML loading, shared DetectorConfig validation/snapshot, path/device normalization and local tracker validation |
-| 02_yolo/input_validation.py | Validate prepared image and reversible scale prerequisites; no frame preparation or ordering policy |
-| 02_yolo/tests/conftest.py | Network-rejecting synthetic backend/raw-result fixtures and actual upstream frame preparation |
-| 02_yolo/tests/test_yolo_backend.py | Mock framework startup/device/offline/lifecycle failures, adapter conversion and complete actual 01/02/03 contract path |
-| 02_yolo/tests/test_yolo_cli.py | Canonical CLI JSON/metadata behavior, missing/undecodable input and missing local weights |
-| 02_yolo/tests/test_yolo_stage.py | Stage/parser/config/recovery/concurrency/legacy/import and downstream integration regressions |
-| 02_yolo/tests/verify_real_offline.py | Opt-in fresh-process CPU/tracker/CLI smoke with temporary random weights and Python network audit; no recognition benchmark |
-| 02_yolo/tests/verify_types.py | Reproducible mypy check of unchanged copies of ten active sources under a valid temporary package name |
-| 02_yolo/REPAIR_REPORT.md | This implementation, verification and limitation record |
-
-The temporary repository-wide search output was removed. Test assets are ignored;
-none are a trained model or required production resource.
-
-## Contracts used / inspection answers
-
-| Question | Confirmed answer |
-|---|---|
-| PreparedFrame definition/output | shared/schemas/prepared_frame.py: image, scale_x/scale_y, retained source, status/diagnostics/timing, accepted/missing/reset information |
-| ObjectFrame definition/output | shared/schemas/object_frame.py: frame_id, timestamp_s, image_width/image_height, detections, source_id/session_id, status/diagnostics/timing and optional anchors |
-| Detection definition | shared/schemas/observations.py, using its BoundingBox; object_frame.DetectedObject is the same class alias |
-| Published coordinates | Original FramePacket pixels, never model/prepared/normalized coordinates |
-| Upstream preparation | perception/core.py and preprocessing.py validate and prepare BGR; optional max_width resize/equalization; no crop, letterbox or rotation |
-| Model-specific preparation | Ultralytics internally adapts tensors, resizes/letterboxes and performs NMS; its Results.xyxy are already in the prepared input image space |
-| Remaining transform | Call authoritative PreparedFrame.source_detection using actual independent x/y scales once; rounding is tested |
-| Metadata | Preserve source frame_id, timestamp_s, source_id/session_id and original width/height; no timestamp generation. ObjectFrame has no free-form orientation field; source metadata stays with PreparedFrame |
-| Module 03 input | OptimizationPipeline.process(prepared, objects) with matching six metadata fields, original-pixel canonical detections, valid empty lists and shared status semantics |
-| Legacy import | perception/detector.py re-exports yolo.inference.detector; no extra implementation required |
-| Model/config locality | DetectorConfig and configs/yolo.yaml, resolved existing local .pt/.onnx path plus required exact classes.yaml; missing assets fail before loading |
-| Offline readiness | No module network/client code; runtime auto-install disabled and offline import state checked. Network-rejecting model-free tests passed; native audit could not reach inference on this machine |
-| Model-free tests | Inject ObjectDetector or raw mocked Ultralytics outputs; no GPU, camera, real weights or internet needed |
-| Ownership conflicts | Only obsolete scaffold docs assigned competing preparation/confirmation/calibration here; replaced active documentation. Inactive scaffold leaves remain unused, not a second pipeline |
-
-See the linked primary Ultralytics result/offline references in README.md.
-
-## YOLO backend / design decisions
-
-- Backend remains Ultralytics; no replacement detector or duplicate packet classes.
-- YOLO(existing_absolute_path, task="detect") loads once; predict/optional track
-  reuse that instance. Startup failures clear cached model/class state and raise
-  InitializationError. Local paths are validated before the framework is invoked.
-- Configuration stays in shared.config.DetectorConfig; no shared API changes or
-  second image-size setting. Framework-specific input sizing uses its default.
-  YAML paths resolve relative to their file; constructor/CLI paths to the CWD.
-- Auto selects available CUDA 0, otherwise CPU. Explicit CPU works; CUDA aliases
-  and device counts are validated. Optional existing MPS remains supported.
-  cpu_fallback controls unavailable accelerator/inference retry behavior; warnings
-  remain attached to the affected frame.
-- YOLO_OFFLINE=true and YOLO_AUTOINSTALL=false are set before framework import.
-  Conflicting flags, enabled auto-install and an already-online import fail startup.
-  No process-global framework monkey-patching or native network-policy bypass is used.
-- Class names exactly match the configured local model map. IDs are never rounded
-  or fabricated. Tracking is optional and explicitly authorized by current contracts;
-  only supplied IDs are published. Local tracker YAML is validated and ReID disabled.
-- Preserve row order. Reject invalid scores/IDs/boxes; partially outside boxes are
-  clipped with diagnostics, completely outside or collapsed boxes are rejected.
-  Structural corruption/inference failure emits ERROR with no partial observations.
-- Model/stream lifecycle uses locks; no asynchronous framework or camera ownership.
-  Module 01 governs frame ordering and reset signals; Module 03 governs continuity,
-  temporal votes, calibration and interactions. Backend IDs are not permanent identity.
-- Capability notices do not lower healthy status. Empty output is NO_DETECTION.
-  Startup errors propagate; per-frame exceptions are observable and may recover.
-  Detection timing is measured, with initialization excluded; FPS is not invented.
-
-## Tests added/repaired
-
-The active tests below use real stage implementations and synthetic backend data.
-Parameterization expands them into 91 passing cases. The network fixture rejects
-connect, sendto and getaddrinfo. Each test's name identifies its assertion subject;
-the inventory following verification gives the complete function list by file.
-
-Key end-to-end checks:
-
-- test_raw_backend_through_actual_module01_02_03: mocked external result passes
-  through actual upstream RGB/rounded resize, parser, filter/restoration and actual
-  optimizer; all correlation metadata and healthy empty consumption asserted.
-- test_offline_actual_module03_consumer: canonical restored geometry and explicit
-  Module 03 coordinate fallback accepted with networking prohibited.
-- test_stability_flag_after_confirmation: Module 02 never confirms detections;
-  only the actual Module 03 stage establishes stability over consecutive frames.
-- test_failed_frame_drains_backend_warnings: failed CPU retry reports its warning
-  once; next healthy frame recovers without stale degradation.
-- test_preimported_online_backend_rejected / test_autoinstall_enabled_rejected:
-  runtime policy fails before model loading even when environment strings look safe.
-
-Five historical tracker footage cases are skipped, not counted as passing coverage.
-The remaining 99 full-suite skips are existing non-Module-02 scaffolds.
-
-## Verification commands / actual results
-
-Commands were run from the repository root unless noted. Workspace-local basetemp
-was used after the OS temporary directory became inaccessible following the
-permission-profile change. The directory 02_yolo/.verification was created first.
+Commands below were executed from repository root, in the required order:
+narrow tests, actual integrations, full suite, then static/import/CLI checks.
+Workspace-local basetemp avoids the known OS temporary-directory permission issue.
 
 ```powershell
-.venv/Scripts/python.exe -m pytest 02_yolo/tests -q -p no:cacheprovider --tb=short --basetemp 02_yolo/.verification/unit-tmp
-.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --tb=short --basetemp 02_yolo/.verification/full-tmp
-.venv/Scripts/python.exe -m pytest 02_yolo/tests/test_yolo_backend.py::test_raw_backend_through_actual_module01_02_03 02_yolo/tests/test_yolo_stage.py::test_offline_actual_module03_consumer 02_yolo/tests/test_object_frame.py::test_stability_flag_after_confirmation -q -p no:cacheprovider --basetemp 02_yolo/.verification/integration-tmp
-.venv/Scripts/python.exe -m compileall -q 02_yolo yolo perception shared optimization 03_optimization integration scripts/run_yolo.py
+.venv/Scripts/python.exe -m pytest 02_yolo/tests -q -p no:cacheprovider --tb=short --basetemp 02_yolo/.verification/minor-unit-final
+.venv/Scripts/python.exe -m pytest 02_yolo/tests/test_yolo_backend.py::test_raw_backend_through_actual_module01_02_03 02_yolo/tests/test_yolo_stage.py::test_offline_actual_module03_consumer 02_yolo/tests/test_object_frame.py::test_stability_flag_after_confirmation 02_yolo/tests/test_object_frame.py::test_module03_calibrates_with_empty_legacy_anchors 02_yolo/tests/test_tracking.py::test_upstream_reset_clears_detector_and_optimizer_histories -q -p no:cacheprovider --tb=short --basetemp 02_yolo/.verification/minor-integration
+.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --tb=short --basetemp 02_yolo/.verification/minor-full
 .venv/Scripts/python.exe -m yolo.tests.verify_types
+.venv/Scripts/python.exe -m compileall -q 02_yolo yolo perception shared optimization 03_optimization integration
+$module02RepairPython = @(git -c core.safecrlf=false diff --name-only -- '*.py')
+.venv/Scripts/python.exe -m ruff check --extend-per-file-ignores '02_yolo/**/__init__.py:N999' $module02RepairPython
+.venv/Scripts/python.exe -m ruff format --check $module02RepairPython
 .venv/Scripts/python.exe -m yolo --help
 .venv/Scripts/python.exe scripts/run_yolo.py --help
-git -c core.safecrlf=false diff HEAD --check
+git -c core.safecrlf=false diff --check
 python -m yolo.tests.verify_real_offline
 ```
 
-| Verification | Real result |
+| Check | Actual result |
 |---|---|
-| Module 02 pytest | 91 passed, 5 skipped; no failures/errors |
-| Full repository pytest | 245 passed, 104 skipped; no failures/errors |
-| Selected actual 01/02/03 integrations | 3 passed |
-| Canonical/legacy import assertions | Passed, aliases are identical |
+| Baseline Module 02 rerun | 91 passed, 5 skipped |
+| Final Module 02 suite | **117 passed, 0 skipped, 0 failed** |
+| Actual Module 01/02/03 selected integrations | **5 passed** |
+| Full repository suite | **271 passed, 99 skipped, 0 failed** |
+| Ruff on all 30 touched Python files | All checks passed; 30 files already formatted |
+| Mypy active owner source view | Success: no issues found in 10 source files |
 | Syntax compilation | Passed |
-| Active owner mypy via verify_types | Success, no issues in 10 source files |
-| Ruff lint / formatting checks | All checks passed; 20 files already formatted |
-| Module/script CLI help | Both exited successfully |
+| Canonical/legacy import assertions | Passed, detector aliases identical |
+| Module/script CLI --help | Both passed from repository root |
 | Git whitespace check | Passed |
-| Opt-in real CPU/offline smoke | Failed before inference: Windows Application Control WinError 4551 loading torch.dll |
+| Native offline smoke attempted | Failed before inference: WinError 4551 loading torch.dll |
 
-Lint and formatting used this exact target list (existing numbered directory
-requires the documented naming exception):
+The 99 full-suite skips are existing non-Module-02 scaffolds. No network, GPU,
+camera or real model is needed by Module 02 unit/integration tests; their existing
+socket-rejection fixture remains enabled.
 
-```powershell
-.venv/Scripts/python.exe -m ruff check --per-file-ignores '02_yolo/__init__.py:N999' 02_yolo/__init__.py 02_yolo/__main__.py 02_yolo/cli.py 02_yolo/config.py 02_yolo/input_validation.py 02_yolo/pipeline.py 02_yolo/inference/detector.py 02_yolo/inference/postprocess.py 02_yolo/inference/class_map.py 02_yolo/tests scripts/run_yolo.py
-.venv/Scripts/python.exe -m ruff format --check 02_yolo/__init__.py 02_yolo/__main__.py 02_yolo/cli.py 02_yolo/config.py 02_yolo/input_validation.py 02_yolo/pipeline.py 02_yolo/inference/detector.py 02_yolo/inference/postprocess.py 02_yolo/inference/class_map.py 02_yolo/tests scripts/run_yolo.py
-```
+Ruff's N999 exception preserves the established numbered package directory.
+Initial lint/format checks exposed that naming warning and mixed line endings
+in newly annotated scaffolds; only touched Python files were normalized and the
+final checks passed. No algorithm was reformatted in an unrelated module.
 
-Mypy's dynamic-package lookup initially checked only the yolo facade or could not
-locate subpackages. Those attempts are not claimed as owner coverage: verify_types
-checks exact unchanged active source copies under a valid temporary yolo package
-with that package first on MYPYPATH. Shared/third-party dependencies are followed
-silently; inactive scaffold leaves and external internals are outside that check.
+Mypy checks exact unchanged copies of the ten active owner sources under a valid
+temporary package name, since it does not follow the dynamic yolo.__path__ locator.
+No third-party internals or inactive scaffolds are claimed as type coverage.
 
-Initial baseline before final repairs: Module 02 80 passed/5 skipped; full repository
-234 passed/104 skipped. Temporary-directory failures were environmental setup errors
-and resolved by using a fresh workspace basetemp. The native smoke was attempted
-again after unrestricted permissions but remained blocked by Windows policy;
-no successful native execution or zero-network-attempt inference result is claimed.
+## Files changed / created
 
-## Remaining limitations
+Paths are repository-relative. Every file in this repair diff is listed.
 
-- Local experiment-trained YOLO weights and final class IDs are absent. The real
-  default configuration deliberately fails setup until they are supplied.
-- Windows Application Control prevents the installed Python 3.14 PyTorch DLL from
-  loading. The project Python 3.11 test environment has no real YOLO/PyTorch backend;
-  unit tests need neither. Use an approved compatible demo environment for native
-  inference verification; this repair did not alter Windows security policy.
-- CPU/CUDA/MPS selection and ONNX metadata device plumbing are mocked tests;
-  physical accelerator, exported ONNX and MPS inference are unverified.
-- Recognition accuracy, real-scene tracking quality, FPS and target-device latency:
-  **not measured**. Random blank-frame smoke would not establish them even if run.
-- Five historical labelled-footage tracker scenarios remain skipped. Track quality,
-  lost/reacquired semantics, anchors and temporal confirmation are not fabricated.
-- Inactive historical planning leaves remain to avoid unrelated restructuring.
-  Their TODOs are not the current public API. Source-tree package locators need
-  separate packaging work for deployment outside the documented repository layout.
-- Network-rejecting model-free tests cover Python socket APIs, not native-code
-  networking or all third-party versions. Rerun native offline audit on the demo
-  environment, then the actual disconnected trained-model demonstration.
-
-## Module 03 integration risks / review readiness
-
-Module 03 must consume original-source-pixel canonical detections with matching
-frame/time/source/session/dimensions and retain the same PreparedFrame. None IDs
-and empty detections are valid. Check ERROR/INVALID_INPUT before object-dependent
-processing. The normal chain's invalid upstream frames are handled by the actual
-optimizer; a caller supplying a corrupted PreparedFrame directly must gate the
-Module 02 status (the optimizer's separate receiving-validator file is a scaffold).
-
-Do not treat backend IDs as permanent identity or default Detection stability,
-track quality/age, reference anchors or motion fields as measured evidence.
-Module 03 owns those temporal/reference meanings. Reset the enclosing chain for
-source/session changes; backend resets can reuse integers. No shared schema or
-consumer API changes were needed. Existing Module 01 historical reports were not
-overwritten or reused as verification of this repair.
-
-**Ready for independent implementation/contract review: YES.**
-**Ready for a verified trained offline camera demonstration: NOT YET**, pending
-local assets, an environment that permits native inference and real-scene evaluation.
-
-## Complete active test function inventory
-
-### tests/test_coordinate_restore.py
-
-| Test | Verifies |
+| File | Why changed |
 |---|---|
-| `test_no_padding` | No padding |
-| `test_horizontal_letterbox_padding` | Horizontal letterbox padding |
-| `test_vertical_letterbox_padding` | Vertical letterbox padding |
-| `test_bbox_touching_image_edge` | Bbox touching image edge |
-| `test_invalid_bbox` | Invalid bbox |
-| `test_letterbox_restore_round_trip` | Letterbox restore round trip |
+| 02_yolo/config.py | Validate enabled tracker threshold relationship |
+| 02_yolo/inference/detector.py | Enforce thresholds; latch tracked accelerator failures; prevent CPU rebuild/reused IDs |
+| 02_yolo/inference/postprocess.py | Source-space numerical boundary correction helper |
+| 02_yolo/pipeline.py | Apply correction after existing restoration; failure/recovery transition logs |
+| 02_yolo/tests/test_tracking.py | Replace five nonexecutable placeholders with active owned-boundary tracking regressions |
+| 02_yolo/tests/test_yolo_backend.py | Startup threshold mismatch/disabled tracking regression |
+| 02_yolo/tests/test_coordinate_restore.py | Reviewer boundary reproduction and material-error rejection |
+| 02_yolo/tests/test_object_frame.py | Actual Module 03 calibration with empty legacy anchors |
+| 02_yolo/tests/test_yolo_stage.py | Failure/reset logging episode regressions |
+| 02_yolo/README.md | Exact thresholds, fallback/reset, roundoff, anchors, logging, version/test limits |
+| 02_yolo/PIPELINE.md | Numerical correction and safe tracked failure behavior; no boundary change |
+| 02_yolo/DEFINITION_OF_DONE.md | Minor-repair acceptance and zero skipped unit coverage |
+| 02_yolo/REPAIR_REPORT.md | Current evidence per finding, commands, inventory and review readiness |
+| configs/yolo_tracker.yaml | Only functional cross-owner config change: new-track threshold 0.60 -> 0.50 |
+| configs/classes.yaml | Comments clarify reference roles are not Module 02 anchor output; IDs unchanged |
+| shared/schemas/object_frame.py | Comments/docstring clarify reserved reference field; packet API unchanged |
+| perception/INTEGRATION.md | Explicit legacy-anchor/calibration ownership |
+| 03_optimization/PIPELINE.md | Notice that old anchor-derived plan is historical; no Module 03 code change |
+| 03_optimization/DEFINITION_OF_DONE.md | Same historical-plan ownership notice |
+| 02_yolo/INTEGRATION_OWNER_NOTES.md (new) | Config/schema wording review and existing script ownership sign-off material |
 
-### tests/test_detection.py
+The following twenty files each receive only the same deprecation/ownership
+notice and line-ending normalization; historical contents/import paths remain:
 
-| Test | Verifies |
-|---|---|
-| `test_confidence_threshold_filtering` | Confidence threshold filtering |
-| `test_disallowed_classes_removed` | Disallowed classes removed |
-| `test_invalid_boxes_rejected` | Invalid boxes rejected |
-| `test_empty_detections_valid_object_frame` | Empty detections valid object frame |
-| `test_missing_model_file_clear_error` | Missing model file clear error |
+- 02_yolo/preprocessing/__init__.py
+- 02_yolo/preprocessing/coordinate_restore.py
+- 02_yolo/preprocessing/letterbox.py
+- 02_yolo/preprocessing/normalize.py
+- 02_yolo/detection/__init__.py
+- 02_yolo/detection/bbox_validator.py
+- 02_yolo/detection/detection_filter.py
+- 02_yolo/detection/object_state.py
+- 02_yolo/tracking/__init__.py
+- 02_yolo/tracking/object_tracker.py
+- 02_yolo/tracking/track_manager.py
+- 02_yolo/tracking/track_state.py
+- 02_yolo/stability/__init__.py
+- 02_yolo/stability/detection_stability.py
+- 02_yolo/reference/__init__.py
+- 02_yolo/reference/anchor_extractor.py
+- 02_yolo/output/__init__.py
+- 02_yolo/output/object_frame_builder.py
+- 02_yolo/inference/yolo_loader.py
+- 02_yolo/inference/yolo_inference.py
 
-### tests/test_object_frame.py
 
-| Test | Verifies |
-|---|---|
-| `test_frame_metadata_copied_unchanged` | Frame metadata copied unchanged |
-| `test_coordinates_in_original_frame` | Coordinates in original frame |
-| `test_uses_shared_schema` | Uses shared schema |
-| `test_missing_anchor_reported` | Missing anchor reported |
-| `test_stability_flag_after_confirmation` | Stability flag after confirmation |
+No scripts/run_yolo.py, Module 01 processing code, Module 03 processing code,
+requirements files, experiment weights or class IDs were changed.
 
-### tests/test_yolo_backend.py
+## Remaining limitations and final readiness
 
-| Test | Verifies |
-|---|---|
-| `test_device_policy` | Device policy |
-| `test_mps_existing_optional_backend` | Mps existing optional backend |
-| `test_unavailable_or_invalid_cuda_fails_at_startup` | Unavailable or invalid cuda fails at startup |
-| `test_model_reuse_across_resolution_reset` | Model reuse across resolution reset |
-| `test_real_adapter_to_module_contract_and_filtering` | Real adapter to module contract and filtering |
-| `test_model_class_mismatch_never_leaves_initialized_cache` | Model class mismatch never leaves initialized cache |
-| `test_backend_missing_is_actionable` | Backend missing is actionable |
-| `test_unreadable_or_invalid_model_reports_loader_failure` | Unreadable or invalid model reports loader failure |
-| `test_configured_tracker_uses_only_local_yaml` | Configured tracker uses only local yaml |
-| `test_offline_flag_conflict_does_not_import_or_load` | Offline flag conflict does not import or load |
-| `test_local_tracking_bad_yaml_and_missing_parameters` | Local tracking bad yaml and missing parameters |
-| `test_unsupported_model_format_fails_without_backend` | Unsupported model format fails without backend |
-| `test_preimported_online_backend_rejected` | Preimported online backend rejected |
-| `test_autoinstall_enabled_rejected` | Autoinstall enabled rejected |
-| `test_exported_backend_metadata_uses_selected_device` | Exported backend metadata uses selected device |
-| `test_raw_backend_through_actual_module01_02_03` | Raw backend through actual module01 02 03 |
+- Actual experiment weights and final classes.yaml IDs have not been supplied.
+- **Native inference not verified in this environment.** The attempted smoke
+  cannot load installed PyTorch torch.dll because Windows Application Control
+  returns WinError 4551. This repair did not weaken Windows policy or bypass it.
+- Native CPU/GPU/ONNX/MPS execution and native-code network isolation are unverified.
+- Detection accuracy, physical tracker crossing/reacquisition quality, FPS and
+  target-device latency have not been measured. Model-free tests are contract
+  evidence, not experimental validation.
+- Config/schema wording and the historical script exception are prepared for
+  integration-owner sign-off; no external approval is fabricated.
+- Module 03 must consume original-pixel boxes, allow None IDs/empty scenes and
+  clear its histories during coordinated resets. Never reset only a detector
+  while retaining temporal state when IDs can be reused.
 
-### tests/test_yolo_cli.py
-
-| Test | Verifies |
-|---|---|
-| `test_cli_json_uses_actual_upstream_and_stage` | Cli json uses actual upstream and stage |
-| `test_cli_rejects_missing_or_undecodable_image` | Cli rejects missing or undecodable image |
-| `test_cli_missing_local_weights_is_setup_error` | Cli missing local weights is setup error |
-
-### tests/test_yolo_stage.py
-
-| Test | Verifies |
-|---|---|
-| `test_one_object_metadata_source_coordinates_and_no_mutation` | One object metadata source coordinates and no mutation |
-| `test_empty_and_multiobject_order_filtering` | Empty and multiobject order filtering |
-| `test_malformed_prepared_image_does_not_initialize` | Malformed prepared image does not initialize |
-| `test_invalid_restoration_scale_rejected_before_inference` | Invalid restoration scale rejected before inference |
-| `test_missing_source_is_programming_error` | Missing source is programming error |
-| `test_upstream_error_and_degradation_propagate` | Upstream error and degradation propagate |
-| `test_invalid_individual_rows_clipping_and_duplicates` | Invalid individual rows clipping and duplicates |
-| `test_failure_after_conversion_never_leaks_partial_results` | Failure after conversion never leaks partial results |
-| `test_startup_error_propagates_and_frame_failure_recovers` | Startup error propagates and frame failure recovers |
-| `test_threads_serialize_and_initialize_once` | Threads serialize and initialize once |
-| `test_parser_preserves_order_tracks_and_no_double_letterbox` | Parser preserves order tracks and no double letterbox |
-| `test_parser_never_fabricates_integer_identity` | Parser never fabricates integer identity |
-| `test_structural_result_corruption_is_explicit` | Structural result corruption is explicit |
-| `test_standalone_yaml_relative_paths_and_snapshot` | Standalone yaml relative paths and snapshot |
-| `test_bad_standalone_config_rejected` | Bad standalone config rejected |
-| `test_no_implicit_mock_production_path` | No implicit mock production path |
-| `test_legacy_import_is_canonical` | Legacy import is canonical |
-| `test_temporary_tracker_reset_failure_is_explicit` | Temporary tracker reset failure is explicit |
-| `test_offline_actual_module03_consumer` | Offline actual module03 consumer |
-| `test_failed_frame_drains_backend_warnings` | Failed frame drains backend warnings |
-| `test_empty_external_boxes` | Empty external boxes |
-| `test_invalid_external_confidence_is_discarded` | Invalid external confidence is discarded |
-| `test_clipped_numpy_geometry_serializes` | Clipped numpy geometry serializes |
+**READY FOR CLAUDE OPUS 5.5 HIGH FINAL REVIEW.**
+Reason: all evidence-backed findings are repaired/documented, all owned tests and
+full regression checks pass, the authoritative boundary is preserved, and external
+asset/native/benchmark limits are explicit.

@@ -131,7 +131,9 @@ class UltralyticsYoloDetector:
     Optional tracking requires a local tracker YAML with ReID disabled. The
     stage binds a single stream; upstream reset signals clear tracker history
     without reloading model weights.
-    CPU fallback is permitted only for accelerator-related failures.
+    CPU fallback is permitted only without tracking. Tracked accelerator failures
+    pause inference until an explicit coordinated pipeline reset; predictor
+    rebuilding must never silently reuse IDs with old downstream temporal state.
     """
 
     def __init__(self, config: DetectorConfig):
@@ -141,6 +143,7 @@ class UltralyticsYoloDetector:
         self._device = "cpu"
         self._warnings: list[str | Diagnostic] = []
         self._class_names: dict[int, str] | None = None
+        self._tracking_reset_required = False
 
     def pop_warnings(self) -> list[str | Diagnostic]:
         with self._lock:
@@ -201,7 +204,7 @@ class UltralyticsYoloDetector:
                     "tracking requires local lap>=0.5.12; install requirements-perception-inference.txt before offline use"
                 )
             if self.config.tracking:
-                validate_tracker(tracker)
+                validate_tracker(tracker, self.config.confidence_threshold)
             # Ultralytics reads these flags at import time. Require callers that
             # already imported it to use the same offline policy, instead of
             # monkey-patching process-global library state.
@@ -297,6 +300,11 @@ class UltralyticsYoloDetector:
             return self._detect(image)
 
     def _detect(self, image: np.ndarray) -> list[Detection]:
+        if self._tracking_reset_required:
+            raise RuntimeError(
+                "Tracking paused after accelerator failure; reset the enclosing "
+                "pipeline before resuming"
+            )
         if self._model is None:
             self.initialize()
         try:
@@ -306,6 +314,12 @@ class UltralyticsYoloDetector:
                 word in str(exc).lower()
                 for word in ("cuda", "cudnn", "mps", "device", "out of memory")
             )
+            if self.config.tracking and self._device != "cpu" and accelerator_error:
+                self._tracking_reset_required = True
+                raise RuntimeError(
+                    f"Tracking accelerator inference failed ({exc}); no transparent CPU "
+                    "retry is safe. Reset the enclosing pipeline before resuming"
+                ) from exc
             if (
                 self._device == "cpu"
                 or not self.config.cpu_fallback
@@ -344,9 +358,11 @@ class UltralyticsYoloDetector:
             if predictor is not None and hasattr(predictor, "vid_path"):
                 predictor.vid_path = [None] * len(predictor.vid_path)
             self._warnings.clear()
+            self._tracking_reset_required = False
 
     def close(self) -> None:
         with self._lock:
             self._model = None
             self._class_names = None
             self._warnings.clear()
+            self._tracking_reset_required = False

@@ -13,6 +13,7 @@ from yolo.inference.detector import (
     UltralyticsYoloDetector,
     filter_detections,
 )
+from yolo.inference.postprocess import clamp_source_box
 from yolo.input_validation import input_error
 
 from shared.config import ConfigurationError, DetectorConfig
@@ -48,6 +49,7 @@ class YoloPipeline:
             self.detector = NullDetector()
         self._initialized = False
         self._reset_pending = False
+        self._runtime_failed = False
         self._lock = RLock()
 
     @classmethod
@@ -94,6 +96,14 @@ class YoloPipeline:
         with self._lock:
             return self._process(prepared)
 
+    def _report_failure(self, stage: str, frame_id: int, exc: Exception) -> None:
+        """One warning per failure episode; repeated failures remain debug logs."""
+        if not self._runtime_failed:
+            LOGGER.warning("YOLO %s failed on frame %s: %s", stage, frame_id, exc)
+        else:
+            LOGGER.debug("YOLO %s still failing on frame %s: %s", stage, frame_id, exc)
+        self._runtime_failed = True
+
     def _process(self, prepared: PreparedFrame) -> ObjectFrame:
         if not isinstance(prepared, PreparedFrame):
             raise TypeError("YoloPipeline consumes shared.schemas.PreparedFrame")
@@ -131,7 +141,7 @@ class YoloPipeline:
             reset_started = perf_counter()
             try:
                 self.reset()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- isolate replaceable tracker reset as a structured frame failure
                 result.status = ModuleStatus.ERROR
                 result.warnings.append(
                     Diagnostic(
@@ -146,7 +156,7 @@ class YoloPipeline:
                 result.stage_timings_ms["object_detection_ms"] = (
                     perf_counter() - reset_started
                 ) * 1000
-                LOGGER.debug("YOLO tracker reset failed: %s", exc, exc_info=True)
+                self._report_failure("tracker_reset", source.frame_id, exc)
                 return result
         # Initialization/configuration errors are fatal, outside runtime recovery.
         self.initialize()
@@ -178,7 +188,7 @@ class YoloPipeline:
                         restored.class_id,
                         restored.class_name,
                         restored.confidence,
-                        restored.bbox,
+                        clamp_source_box(restored.bbox, source.width, source.height),
                         restored.track_id,
                         identity_persistent=restored.track_id is not None,
                     )
@@ -197,7 +207,7 @@ class YoloPipeline:
                 if result.detections
                 else ModuleStatus.NO_DETECTION
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- isolate replaceable backend failures without partial output
             result.detections = []
             result.status = ModuleStatus.ERROR
             result.warnings.append(
@@ -206,9 +216,11 @@ class YoloPipeline:
                     {"error": type(exc).__name__, "message": str(exc)},
                 )
             )
-            LOGGER.debug(
-                "YOLO frame %s failed: %s", source.frame_id, exc, exc_info=True
-            )
+            self._report_failure("inference", source.frame_id, exc)
+        else:
+            if self._runtime_failed:
+                LOGGER.info("YOLO inference recovered on frame %s", source.frame_id)
+                self._runtime_failed = False
         if any(d.track_id is None for d in result.detections):
             result.notices.append(
                 Diagnostic(

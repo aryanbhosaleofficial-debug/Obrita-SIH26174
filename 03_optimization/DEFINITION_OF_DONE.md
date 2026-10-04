@@ -2,6 +2,9 @@
 > and implementation limits are defined in this module README and
 > [perception/INTEGRATION.md](../perception/INTEGRATION.md). Module 01 publishes
 > PreparedFrame; continuity/confirmation and rack calibration belong to Module 03.
+> Anchor-related checklist items below are historical planning, not current acceptance:
+> ObjectFrame.reference_anchors is reserved. Active reference calibration belongs
+> to Module 03's manual/ArUco transformer and SpatialFeaturePacket.reference_frame.
 
 # Definition of Done — Module 03 Optimization Sequence
 

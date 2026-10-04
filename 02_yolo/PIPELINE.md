@@ -16,6 +16,7 @@ Module 01 FrameProcessor -> shared.PreparedFrame
         [confidence, classes, positive boxes, diagnostic clipping]
      -> PreparedFrame.source_detection
         [existing x/y scale restoration, exactly once]
+     -> clamp_source_box [source boundary roundoff only; no second scaling]
      -> shared.ObjectFrame [original-source pixels + unchanged metadata]
   -> Module 03 OptimizationPipeline.process(prepared, objects)
 ```
@@ -31,6 +32,11 @@ temporal confirmation, calibration, motion and interactions. Boundary/HAR/FSM/GU
 algorithms stay with their owners.
 
 Inactive preprocessing, tracking, stability, reference and output-builder scaffold
-leaves are historical planning files and are not called by this stage. Do not
+leaves are explicitly marked DEPRECATED / UNUSED and are not called by this stage. Do not
 implement another pipeline from their obsolete TODOs. See [README](README.md)
 for coordinates, lifecycle, errors, configuration and limitations.
+
+Tracked accelerator failures return ERROR and pause inference until a coordinated
+reset; predictor/tracker state is never transparently rebuilt on CPU. Untracked
+inference may still retry CPU. ReferenceAnchor/reference_anchors are reserved
+legacy schema leaves; Module 03's calibration uses ReferenceFrameInfo instead.

@@ -62,6 +62,9 @@ The parser produces prepared-image pixels. The stage filters/validates them ther
 then calls the existing PreparedFrame.source_detection() once:
 x_source=x_prepared/scale_x, y_source=y_prepared/scale_y. Published boxes are
 original-source pixels, with 0 <= x1 < x2 <= image_width and equivalent y bounds.
+After this transform, clamp_source_box corrects only floating-point boundary
+roundoff (up to four ULPs). Material out-of-bounds values or collapsed boxes fail
+the frame instead of being concealed. No second scaling stage is added.
 No model-letterboxed, normalized or rack-relative boxes cross this stage.
 Future crop/rotation support must update the authoritative upstream restoration
 contract first; Module 02 cannot infer missing transform metadata.
@@ -119,16 +122,35 @@ detector:
 |---|---|
 | backend | ultralytics for real inference; none explicitly disables it; mock requires an injected backend |
 | model_path, classes_path | Required existing local weights and exact project class map |
-| confidence_threshold, iou_threshold | Finite [0,1]; confidence rechecked after conversion; equality is retained |
+| confidence_threshold, iou_threshold | Finite [0,1]; project post-filter retains equality, but Ultralytics NMS uses strict confidence > threshold |
 | class_whitelist | null keeps all mapped classes, list selects IDs, [] keeps none; unknown IDs fail startup |
 | device | cpu, auto, cuda, cuda:N or one nonnegative CUDA index; existing optional mps when available |
-| cpu_fallback | Unavailable accelerator or accelerator inference failure can retry CPU with a warning; false enforces availability |
+| cpu_fallback | Unavailable accelerator at startup can select CPU; runtime CPU retry is allowed only with tracking disabled; false enforces availability |
 | tracking, tracker_path | Optional backend IDs; validated local ByteTrack/BoT-SORT YAML with ReID disabled |
 
 Auto chooses CUDA 0 when available, otherwise CPU. An index beyond the available
 CUDA device count is a startup error. Thresholds are repository defaults, not
 experimentally optimized values. The shared schema has no image_size setting:
 model-specific sizing uses the installed Ultralytics default.
+
+Tracking remains enabled in configs/yolo.yaml, as allowed by the integration
+contract. configs/yolo_tracker.yaml now uses new_track_thresh=0.50, aligned with
+confidence_threshold=0.50; track_high_thresh is also 0.50. Startup rejects either
+tracker threshold above detector confidence while tracking is enabled. This is
+logical consistency, not experimental tuning. Disabled tracking does not read or
+validate tracker settings. The detector's 0.50 cutoff excludes ByteTrack's lower
+score association band; these defaults do not claim full low-score recovery.
+
+Installed Ultralytics 8.4.165 source was inspected: NMS uses strict > comparisons,
+while the project's post-filter uses >=. Tests injecting confidence exactly equal
+to the threshold verify the latter only; they do not override framework NMS.
+Tracking results also depend on association/confirmation: when tracks exist,
+framework callbacks may omit unconfirmed detections; when no tracks are returned,
+raw detections may remain with track_id=None. Both empty results and missing IDs
+are valid. See the primary [tracker reference](https://docs.ultralytics.com/reference/trackers/byte_tracker/)
+and [NMS reference](https://docs.ultralytics.com/reference/utils/nms/).
+Dependencies remain unpinned under repository policy; this source inspection is
+not a claim of successful native inference on that installed version.
 
 classes.yaml requires a nonempty classes list with unique nonnegative integer id
 and unique nonempty name. It must exactly match model metadata, including classes
@@ -155,6 +177,13 @@ A lock serializes initialization, inference, reset and close. Use one stage per
 ordered source/session; the lock does not reorder concurrent submissions.
 Module 01 owns sequencing. Its reset signal clears backend tracker history without
 reloading weights. Explicitly reset the enclosing chain for source/session changes.
+If tracked accelerator inference fails, the adapter latches a reset-required
+failure: ObjectFrame is ERROR with no detections, no CPU retry/model move/predictor
+recreation occurs, and later calls stay ERROR without inference until reset.
+Reset the enclosing chain so Module 03 clears temporal state too; configure CPU
+for the restarted chain if necessary. Calling only the detector's reset while
+retaining downstream history is unsafe. Startup CPU selection is safe because no
+tracking history exists yet. Without tracking, accelerator-to-CPU retry remains.
 Context-manager exit closes the backend. There are no per-frame YAML reads,
 model reloads, GUI operations or image dumps.
 
@@ -186,18 +215,25 @@ and assets before disconnecting the network.
 | Healthy empty scene | Empty detections, NO_DETECTION |
 | Invalid confidence/class/ID/box row | Reject/count row; retain other valid rows with DEGRADED |
 | Positive finite box partly outside image | Intersect with bounds and report clipped_count; wholly outside/collapsed boxes rejected |
-| Malformed arrays, batch/shape/map mismatch, inference/reset failure | Empty ERROR with structured DETECTOR_FAILURE; later frames may recover |
+| Malformed arrays, batch/shape/map mismatch, inference/reset failure | Empty ERROR with structured DETECTOR_FAILURE; transient failures may recover; tracked accelerator failures require coordinated reset |
 | Tracking disabled or backend ID absent | Capability notice, no fabricated ID or degradation solely from the notice |
 
 Order is preserved. Scores are uncalibrated confidence in [0,1].
 The stage clears downstream stability/continuity/reference fields when creating
 output leaves. It publishes no lost-object predictions, track quality or confirmation
-votes. reference_anchors=[] is valid; Module 03 calibrates independently.
+votes. reference_anchors is a reserved legacy schema field, always []; it does not
+report reference visibility or loss. Module 03 calibrates independently and
+publishes SpatialFeaturePacket.reference_frame / ReferenceFrameInfo. See
+[integration owner notes](INTEGRATION_OWNER_NOTES.md) for the comment-only schema
+alignment and the existing scripts/run_yolo.py ownership sign-off requirement.
 Backend IDs are session-local and reusable after reset, not permanent physical IDs.
 
 stage_timings_ms["object_detection_ms"] measures inference/conversion/filtering,
 excluding startup; invalid input records zero. Upstream diagnostics are copied.
-Standard Python logging reports startup and debug-level frame diagnostics.
+Standard Python logging reports the first runtime/reset failure in an episode at
+WARNING, repeated failures at DEBUG, and the next successful inference at INFO.
+Invalid upstream input does not falsely announce inference recovery. Startup
+configuration failures remain ERROR logs/exceptions.
 Module 03 merges preprocessing and detection timing separately and must check
 unusable statuses before performing object-dependent reasoning.
 
@@ -226,9 +262,11 @@ planning scaffolds. If the OS temporary directory is inaccessible, create
 
 The opt-in smoke makes temporary **random untrained** weights from an installed
 YOLO11 architecture and denies/counts Python socket attempts. It verifies plumbing,
-not accuracy, and is not collected by pytest. Five historical tracker-footage
-scenarios remain skipped; backend identity/reset behavior is tested, physical
-crossing/reacquisition quality is not.
+not accuracy, and is not collected by pytest. Tracking tests now execute model-free
+checks for supplied IDs, missing IDs, disabled tracking, empty frames, threshold
+relationships, reset and accelerator failure behavior; no Module 02 tests are
+skipped. These replace unused footage-evaluation placeholders rather than claiming
+physical crossing/reacquisition or lost-track quality has been evaluated.
 
 Real smoke is currently blocked by Windows Application Control (WinError 4551
 loading torch.dll). CPU/CUDA policies are tested with mocked framework outputs;

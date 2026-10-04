@@ -3,8 +3,14 @@
 from optimization.pipeline import OptimizationPipeline
 from yolo.pipeline import YoloPipeline
 
-from shared.config import DetectorConfig, HandTrackerConfig, PipelineConfig
+from shared.config import (
+    DetectorConfig,
+    HandTrackerConfig,
+    PipelineConfig,
+    ReferenceFrameConfig,
+)
 from shared.schemas.object_frame import ObjectFrame
+from shared.schemas.observations import ReferenceSource
 
 
 def test_frame_metadata_copied_unchanged(prepared, backend):
@@ -55,3 +61,29 @@ def test_stability_flag_after_confirmation(prepared, backend, detection):
     finally:
         optimization.close()
         stage.close()
+
+
+def test_module03_calibrates_with_empty_legacy_anchors(prepared, backend, detection):
+    from dataclasses import replace
+
+    frame = prepared()
+    objects = YoloPipeline(
+        DetectorConfig(), backend([[replace(detection, class_name="rack")]])
+    ).process(frame)
+    optimizer = OptimizationPipeline(
+        PipelineConfig(
+            hand_tracker=HandTrackerConfig(enabled=False, backend="none"),
+            reference_frame=ReferenceFrameConfig(
+                enabled=True, corners_normalized=[[0, 0], [1, 0], [1, 1], [0, 1]]
+            ),
+        )
+    )
+    try:
+        consumed = optimizer.process(frame, objects)
+        assert (
+            objects.reference_anchors == consumed.object_frame.reference_anchors == []
+        )
+        assert consumed.spatial.reference_frame.valid
+        assert consumed.spatial.reference_frame.source == ReferenceSource.STATIC_MANUAL
+    finally:
+        optimizer.close()

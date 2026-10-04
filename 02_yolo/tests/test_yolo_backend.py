@@ -280,3 +280,31 @@ def test_raw_backend_through_actual_module01_02_03(
         assert state.loads == 1
     finally:
         optimizer.close()
+
+
+@pytest.mark.parametrize("tracking", [True, False])
+def test_tracker_threshold_relationship_enforced_only_when_enabled(
+    local_config, install_backend, tmp_path, monkeypatch, tracking
+):
+    from pathlib import Path
+
+    import yaml
+
+    state = install_backend()
+    monkeypatch.setattr("yolo.inference.detector.find_spec", lambda name: object())
+    tracker = yaml.safe_load(Path("configs/yolo_tracker.yaml").read_text())
+    tracker["new_track_thresh"] = 0.6
+    path = tmp_path / "tracker.yaml"
+    path.write_text(yaml.safe_dump(tracker))
+    detector = UltralyticsYoloDetector(
+        replace(local_config, tracking=tracking, tracker_path=path)
+    )
+    if tracking:
+        with pytest.raises(
+            InitializationError, match="new_track_thresh.*confidence_threshold"
+        ):
+            detector.initialize()
+        assert state.loads == 0
+    else:
+        detector.initialize()
+        assert state.loads == 1

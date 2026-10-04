@@ -411,3 +411,65 @@ def test_clipped_numpy_geometry_serializes(prepared, backend, detection):
     output = YoloPipeline(DetectorConfig(), backend([[candidate]])).process(prepared())
     assert all(type(v) is float for v in output.detections[0].bbox_xyxy)
     assert json.loads(json.dumps(asdict(output)))["detections"][0]["bbox"]["x1"] == 0
+
+
+def test_failure_and_recovery_logging_transitions(prepared, backend, detection, caplog):
+    import logging
+
+    class Failing(backend):
+        failures = 3
+
+        def detect(self, image):
+            if self.failures:
+                self.failures -= 1
+                raise RuntimeError("temporary tensor failure")
+            return super().detect(image)
+
+    caplog.set_level(logging.DEBUG, logger="yolo.pipeline")
+    stage = YoloPipeline(DetectorConfig(), Failing([[detection]]))
+    for i in range(3):
+        assert (
+            stage.process(prepared(frame_id=i, timestamp=i / 30)).status
+            == ModuleStatus.ERROR
+        )
+    assert stage.process(prepared(frame_id=3, timestamp=0.1)).status == ModuleStatus.OK
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+    assert len([r for r in caplog.records if r.levelno == logging.DEBUG]) == 2
+    assert (
+        len(
+            [
+                r
+                for r in caplog.records
+                if r.levelno == logging.INFO and "recovered" in r.message
+            ]
+        )
+        == 1
+    )
+    stage.detector.failures = 1
+    assert (
+        stage.process(prepared(frame_id=4, timestamp=0.2)).status == ModuleStatus.ERROR
+    )
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+
+def test_tracker_reset_failure_logs_one_episode(prepared, backend, detection, caplog):
+    import logging
+
+    class BadReset(backend):
+        failures = 2
+
+        def reset_tracking(self):
+            if self.failures:
+                self.failures -= 1
+                raise RuntimeError("temporary tracker reset failure")
+
+    caplog.set_level(logging.DEBUG, logger="yolo.pipeline")
+    stage = YoloPipeline(DetectorConfig(), BadReset([[detection]]))
+    frame = replace(prepared(), reset_required=True)
+    assert stage.process(frame).status == ModuleStatus.ERROR
+    frame = replace(frame, reset_required=False)
+    assert stage.process(frame).status == ModuleStatus.ERROR
+    assert stage.process(frame).status == ModuleStatus.OK
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+    assert len([r for r in caplog.records if r.levelno == logging.DEBUG]) == 1
+    assert len([r for r in caplog.records if r.levelno == logging.INFO]) == 1

@@ -42,7 +42,7 @@ def validate_config(config: DetectorConfig) -> DetectorConfig:
     return config
 
 
-def validate_tracker(values: dict) -> None:
+def validate_tracker(values: dict, confidence_threshold: float | None = None) -> None:
     """Validate the installed adapter's local tracker settings before inference."""
     for name in (
         "track_high_thresh",
@@ -60,6 +60,14 @@ def validate_tracker(values: dict) -> None:
             raise ConfigurationError(f"tracker.{name} must be finite in [0,1]")
     if values["track_low_thresh"] > values["track_high_thresh"]:
         raise ConfigurationError("tracker low threshold must not exceed high threshold")
+    if confidence_threshold is not None:
+        for name in ("track_high_thresh", "new_track_thresh"):
+            if values[name] > confidence_threshold:
+                raise ConfigurationError(
+                    f"tracker.{name} must not exceed detector.confidence_threshold "
+                    "when tracking is enabled; otherwise accepted detections may "
+                    "be excluded from new tracks"
+                )
     if type(values.get("track_buffer")) is not int or values["track_buffer"] < 0:
         raise ConfigurationError("tracker.track_buffer must be a nonnegative integer")
     if type(values.get("fuse_score")) is not bool:
