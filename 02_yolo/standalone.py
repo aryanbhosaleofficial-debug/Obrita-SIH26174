@@ -11,6 +11,8 @@ def bootstrap():
         spec = importlib.util.spec_from_file_location(
             "yolo", root / "__init__.py", submodule_search_locations=[str(root)]
         )
+        if spec is None or spec.loader is None:
+            raise ImportError("cannot load the local Module 02 package")
         module = importlib.util.module_from_spec(spec)
         sys.modules["yolo"] = module
         spec.loader.exec_module(module)

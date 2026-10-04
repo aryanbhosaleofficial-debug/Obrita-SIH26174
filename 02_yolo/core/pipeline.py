@@ -83,6 +83,13 @@ class DetectorPipeline:
                         f"detector initialization failed: {exc}"
                     ) from exc
                 self._initialized = True
+            if self.semantic.closed:
+                previous = self.semantic
+                self.semantic = SemanticWorker(
+                    previous.config,
+                    previous.verifier,
+                    verifier_lock=previous.verifier_lock,
+                )
 
     def close(self) -> None:
         with self._lock:

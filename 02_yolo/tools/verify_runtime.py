@@ -15,7 +15,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OWNER = ROOT / "02_yolo"
-OUTPUT = OWNER / ".verification/runtime"
+OUTPUT = (
+    Path(os.environ["ORBITA_VERIFY_DIR"])
+    if "ORBITA_VERIFY_DIR" in os.environ
+    else Path(tempfile.mkdtemp(prefix="orbita-module02-runtime-"))
+)
 OUTPUT.mkdir(parents=True, exist_ok=True)
 os.environ["YOLO_CONFIG_DIR"] = str(OUTPUT / "ultralytics")
 os.environ["MPLCONFIGDIR"] = str(OUTPUT / "matplotlib")

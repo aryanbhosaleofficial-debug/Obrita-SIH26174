@@ -121,10 +121,11 @@ def local_host(host):
     if not isinstance(host, str):
         raise TypeError("Ollama host must be a loopback HTTP URL")
     p = urlsplit(host)
+    hostname = p.hostname
+    if hostname is None:
+        raise ValueError("Ollama host must be a loopback HTTP URL")
     try:
-        allowed = (
-            p.hostname == "localhost" or ipaddress.ip_address(p.hostname).is_loopback
-        )
+        allowed = hostname == "localhost" or ipaddress.ip_address(hostname).is_loopback
     except ValueError:
         allowed = False
     if (
@@ -137,7 +138,7 @@ def local_host(host):
         or p.fragment
     ):
         raise ValueError("Ollama host must be a loopback HTTP URL")
-    hostname = "127.0.0.1" if p.hostname == "localhost" else p.hostname
+    hostname = "127.0.0.1" if hostname == "localhost" else hostname
     if ":" in hostname:
         hostname = f"[{hostname}]"
     return f"http://{hostname}:{p.port or 11434}"

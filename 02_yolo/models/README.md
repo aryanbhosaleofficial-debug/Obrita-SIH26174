@@ -1,5 +1,7 @@
 # Local Module 02 models
 
+The working `best.pt` is present; the historical `HAR.zip` has been removed. See [MODEL_MANIFEST.md](MODEL_MANIFEST.md) for freshly verified architecture/classes, SHA-256, provenance, Git policy and the verified backup/restore path. Do not run archive extraction unless the original ZIP is available. Runtime does not need that archive.
+
 `best.pt` is the local prototype YOLOv8n detection checkpoint extracted explicitly from `../HAR.zip` by `python 02_yolo/tools/extract_har_model.py` (run from the repository root). It is Git-ignored, so distribute it with the standalone directory or supply `--weights` separately. The extraction script verifies the audited size and SHA-256 and does not execute pickle code. Model metadata was inspected statically before subsequent real inference verification.
 
 The active HAR class map is `../config/har_classes.yaml`: 0 lid, 1 main_box, 2 red_box, 3 yellow_box. The matching detector profile is `../config/standalone.yaml`. Paths in detector YAML are relative to its directory. Existing `configs/yolo.yaml` remains a separate project profile with its original class expectations; it does not automatically switch models.

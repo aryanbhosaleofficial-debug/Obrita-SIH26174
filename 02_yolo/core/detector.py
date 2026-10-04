@@ -8,7 +8,7 @@ from dataclasses import replace
 from importlib.util import find_spec
 from numbers import Real
 from threading import RLock
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 import yaml
@@ -81,7 +81,7 @@ def filter_detections(
             or not all(
                 isinstance(v, Real)
                 and not isinstance(v, (bool, np.bool_))
-                and np.isfinite(v)
+                and np.isfinite(cast(Any, v))
                 for v in (b.x1, b.y1, b.x2, b.y2)
             )
             or b.x2 <= b.x1

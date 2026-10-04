@@ -4,7 +4,6 @@ import math
 from numbers import Real
 
 import numpy as np
-
 from yolo.core.contracts import InputFrame as PreparedFrame
 
 

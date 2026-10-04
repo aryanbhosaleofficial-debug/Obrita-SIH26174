@@ -146,7 +146,7 @@ def main(argv=None):
                     if writer is None:
                         writer = cv2.VideoWriter(
                             str(args.output),
-                            cv2.VideoWriter_fourcc(*"mp4v"),
+                            cv2.VideoWriter.fourcc(*"mp4v"),
                             source.fps,
                             (w, h),
                         )

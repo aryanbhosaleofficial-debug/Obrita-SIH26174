@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from perception.core import FrameProcessor
         from shared.schemas.frame_packet import FramePacket
+
         config = load_config(args.config)
         updates = {
             name: value

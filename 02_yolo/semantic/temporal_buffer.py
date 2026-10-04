@@ -18,7 +18,7 @@ class Keyframe:
 class TemporalBuffer:
     def __init__(self, config):
         self.config = config
-        self.frames = deque(maxlen=config.capacity)
+        self.frames: deque[Keyframe] = deque(maxlen=config.capacity)
         self._count = 0
 
     def append(self, image, objects):
