@@ -1,43 +1,57 @@
-"""
-Tests for ObjectFrame assembly (Module 02).
+"""Active canonical output and downstream ownership checks."""
 
-Implementation status:
-    Scaffold only. Every test below is skipped until the component exists.
-    Remove the module-level skip marker when implementing the tests.
+from optimization.pipeline import OptimizationPipeline
+from yolo.pipeline import YoloPipeline
 
-Required test cases:
-1. frame_id and timestamp_s are copied unchanged from FramePacket.
-2. All boxes lie within original source-frame bounds.
-3. Output is an instance of shared.schemas.object_frame.ObjectFrame.
-4. Missing reference anchor gives an empty anchor list, not a fabricated one.
-5. is_stable is set only after multi-frame confirmation.
-"""
-
-import pytest
-
-pytestmark = pytest.mark.skip(reason="Scaffold only: implementation pending")
+from shared.config import DetectorConfig, HandTrackerConfig, PipelineConfig
+from shared.schemas.object_frame import ObjectFrame
 
 
-def test_frame_metadata_copied_unchanged():
-    """frame_id and timestamp_s are copied unchanged from FramePacket."""
-    raise NotImplementedError("Test not written yet")
+def test_frame_metadata_copied_unchanged(prepared, backend):
+    frame = prepared()
+    output = YoloPipeline(DetectorConfig(), backend()).process(frame)
+    source = frame.source
+    assert (
+        output.frame_id,
+        output.timestamp_s,
+        output.source_id,
+        output.session_id,
+    ) == (source.frame_id, source.timestamp_s, source.source_id, source.session_id)
 
 
-def test_coordinates_in_original_frame():
-    """All boxes lie within original source-frame bounds."""
-    raise NotImplementedError("Test not written yet")
+def test_coordinates_in_original_frame(prepared, backend, detection):
+    output = YoloPipeline(DetectorConfig(), backend([[detection]])).process(prepared())
+    assert output.detections[0].bbox_xyxy == (40, 60, 160, 180)
+    assert output.image_width == 800 and output.image_height == 400
 
 
-def test_uses_shared_schema():
-    """Output is an instance of shared.schemas.object_frame.ObjectFrame."""
-    raise NotImplementedError("Test not written yet")
+def test_uses_shared_schema(prepared, backend):
+    assert (
+        type(YoloPipeline(DetectorConfig(), backend()).process(prepared()))
+        is ObjectFrame
+    )
 
 
-def test_missing_anchor_reported():
-    """Missing reference anchor gives an empty anchor list, not a fabricated one."""
-    raise NotImplementedError("Test not written yet")
+def test_missing_anchor_reported(prepared, backend, detection):
+    output = YoloPipeline(DetectorConfig(), backend([[detection]])).process(prepared())
+    assert output.reference_anchors == []
 
 
-def test_stability_flag_after_confirmation():
-    """is_stable is set only after multi-frame confirmation."""
-    raise NotImplementedError("Test not written yet")
+def test_stability_flag_after_confirmation(prepared, backend, detection):
+    stage = YoloPipeline(DetectorConfig(), backend([[detection]]))
+    optimization = OptimizationPipeline(
+        PipelineConfig(hand_tracker=HandTrackerConfig(enabled=False, backend="none"))
+    )
+    try:
+        flags = []
+        for i in range(3):
+            frame = prepared(frame_id=i, timestamp=i / 30)
+            output = stage.process(frame)
+            assert not output.detections[0].is_stable  # Module 02 never votes.
+            flags.append(
+                optimization.process(frame, output).object_frame.detections[0].is_stable
+            )
+        assert flags == [False, False, True]
+    finally:
+        optimization.close()
+        stage.close()

@@ -1,5 +1,8 @@
 """
-Object detection, tracking, stability and reference anchors -> ObjectFrame.
+PreparedFrame -> local object detection (optional backend IDs) -> ObjectFrame.
+
+Canonical entry point: yolo.pipeline.YoloPipeline. Temporal stability and rack
+calibration belong to Module 03; legacy planning leaves are inactive.
 
 Owner:
     Module 02 — YOLO
