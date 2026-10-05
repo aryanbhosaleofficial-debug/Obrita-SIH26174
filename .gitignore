@@ -42,3 +42,5 @@ data/videos/*
 # Local recovery ZIP and generated pytest artifacts stay outside source history.
 /Obrita-SIH26174-main.zip
 /tests_tmp/
+# Root screenshots produced by the independent GUI smoke test; preserve locally.
+/screenshot_*.png

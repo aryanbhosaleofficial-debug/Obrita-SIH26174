@@ -81,7 +81,8 @@ def test_held_and_empty_frames_render():
     assert render_overlay(source(), held).any()
     empty = PoseFrame(1, 0.0, image_width=320, image_height=240)
     out = render_overlay(source(), empty)
-    assert out[30:, :].sum() == 0  # only the status text area is drawn
+    assert out[22 * len(status_lines(empty)) + 8:, :].sum() == 0
+    # Status now also reports coordinate frame and detection streak.
 
 
 def test_low_visibility_and_far_off_image_points_are_skipped():
@@ -116,6 +117,26 @@ def test_status_lines_report_held_state():
     )
     assert (
         "Body:held" in lines[0]
-        and "YOLO:ok objects:1" in lines[1]
-        and "measured" in lines[2]
+        and any("YOLO:ok objects:1" in line for line in lines)
+        and any("measured" in line for line in lines)
     )
+
+
+def test_mirror_display_reflects_background_before_drawing_readable_status():
+    image = source()
+    image[100:, :30] = 255
+    empty = PoseFrame(1, 0., image_width=320, image_height=240)
+    normal = render_overlay(image, empty)
+    mirrored = render_overlay(image, empty, mirror_display=True)
+    assert np.array_equal(normal[:70], mirrored[:70])  # text has identical orientation
+    assert np.array_equal(mirrored[100:], image[100:, ::-1])
+    assert image[100:, :30].all()  # original image remains untouched
+
+
+def test_mirrored_hand_draw_positions_do_not_change_published_coordinates():
+    pose = pose_frame()
+    wrist = pose.hands[0].wrist
+    output = render_overlay(source(), pose, mirror_display=True, show_pose=False)
+    x, y = round(319 - wrist.x), round(wrist.y)
+    assert output[y, x].any() and not output[round(wrist.y), round(wrist.x)].any()
+    assert pose.hands[0].wrist.x == 200 and pose.hands[0].handedness == LEFT

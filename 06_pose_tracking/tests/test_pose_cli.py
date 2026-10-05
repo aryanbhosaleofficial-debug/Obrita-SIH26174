@@ -125,7 +125,7 @@ def test_cli_video_headless_writes_synchronized_jsonl(tmp_path, scripted_cli):
     assert [r["frame_id"] for r in rows] == list(range(6))
     assert [r["timestamp_s"] for r in rows] == pytest.approx([i / 10 for i in range(6)])
     assert all(r["source_id"] == "clip.mp4" and r["body_detected"] for r in rows)
-    assert rows[0]["hands"][0]["handedness"] == "RIGHT"
+    assert rows[0]["hands"][0]["handedness"] == "LEFT"
     assert annotated.stat().st_size > 0 and scripted_cli.initializations == 1
 
 
@@ -234,3 +234,70 @@ def test_camera_timestamps_strictly_increase_even_with_a_coarse_clock(monkeypatc
     finally:
         camera.close()
     assert all(b > a for a, b in pairwise(stamps))
+
+
+def test_mirrored_display_leaves_inference_and_published_coordinates_unchanged(tmp_path, scripted_cli, monkeypatch):
+    image = tmp_path / "asymmetric.png"
+    pixels = np.zeros((48, 64, 3), np.uint8)
+    pixels[:, :10] = 255
+    cv2.imwrite(str(image), pixels)
+    rendered = []
+
+    def overlay(source, pose, *args, **kwargs):
+        assert not pose.input_mirrored
+        rendered.append(source.copy())
+        assert kwargs["mirror_display"]
+        return cv2.flip(source, 1)
+
+    monkeypatch.setattr(cli, "render_overlay", overlay)
+    output, jsonl = tmp_path / "preview.png", tmp_path / "tracking.jsonl"
+    assert cli.main(["--source", str(image), "--mirror-display", "--no-show",
+                     "--output", str(output), "--jsonl", str(jsonl)]) == 0
+    assert np.array_equal(rendered[0], pixels)
+    assert np.array_equal(cv2.imread(str(output)), cv2.flip(pixels, 1))
+    row = json.loads(jsonl.read_text(encoding="utf-8"))
+    assert row["hands"][0]["landmarks"][0]["normalized_xy"][0] == pytest.approx(.3)
+    assert row["hands"][0]["handedness"] == "LEFT"
+
+
+def test_source_numeric_camera_alias(monkeypatch, scripted_cli):
+    calls = []
+    def unavailable(index, **kwargs):
+        calls.append(index)
+        raise SourceError("camera unavailable")
+    monkeypatch.setattr(cli, "LatestFrameCamera", unavailable)
+    assert cli.main(["--source", "0", "--no-show"]) == 2
+    assert calls == [0]
+
+
+def test_cli_refuses_overwriting_input(tmp_path, scripted_cli):
+    path = tmp_path / "input.png"
+    cv2.imwrite(str(path), np.zeros((8, 8, 3), np.uint8))
+    content = path.read_bytes()
+    assert cli.main(["--source", str(path), "--jsonl", str(path), "--no-show"]) == 2
+    assert path.read_bytes() == content and scripted_cli.calls == 0
+
+
+@pytest.mark.parametrize("key", [ord("q"), 27])
+def test_display_quit_releases_models_and_window(tmp_path, scripted_cli, monkeypatch, key):
+    video = tmp_path / "clip.mp4"
+    write_video(video)
+    windows_closed = []
+    monkeypatch.setattr(cli.cv2, "imshow", lambda *args: None)
+    monkeypatch.setattr(cli.cv2, "waitKey", lambda *args: key)
+    monkeypatch.setattr(cli.cv2, "destroyAllWindows", lambda: windows_closed.append(True))
+    assert cli.main(["--source", str(video), "--show"]) == 0
+    assert scripted_cli.calls == 1 and scripted_cli.closes == 1 and windows_closed == [True]
+
+
+def test_missing_source_fails_before_models_load(tmp_path, scripted_cli):
+    assert cli.main(["--source", str(tmp_path / "missing.mp4"), "--no-show"]) == 2
+    assert scripted_cli.initializations == 0
+
+
+def test_unavailable_camera_fails_before_models_load(scripted_cli, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise SourceError("camera unavailable")
+    monkeypatch.setattr(cli, "LatestFrameCamera", unavailable)
+    assert cli.main(["--camera", "0", "--no-show"]) == 2
+    assert scripted_cli.initializations == 0

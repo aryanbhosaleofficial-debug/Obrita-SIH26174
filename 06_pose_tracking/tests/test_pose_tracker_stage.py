@@ -57,10 +57,10 @@ def test_resized_prepared_image_still_maps_to_source_pixels(frames, make_tracker
 
 
 def test_one_hand_with_default_mirror_convention(frames, make_tracker, raw):
-    # MediaPipe hand labels assume mirrored input; unmirrored input is swapped.
+    # Current Tasks bundle reports anatomical sides on unmirrored input.
     tracker, _ = make_tracker([raw.result(hands=(raw.hand("Left"),))])
     pose = tracker.process(frames()())
-    assert [h.handedness for h in pose.hands] == [RIGHT]
+    assert [h.handedness for h in pose.hands] == [LEFT]
     assert pose.hands[0].model_handedness == "Left"
     assert pose.status == ModuleStatus.OK and not pose.body_detected
 
@@ -68,7 +68,7 @@ def test_one_hand_with_default_mirror_convention(frames, make_tracker, raw):
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
-        ({"input_mirrored": True}, LEFT),
+        ({"input_mirrored": True}, RIGHT),
         ({"swap_handedness": False}, LEFT),
         ({"input_mirrored": True, "swap_handedness": True}, RIGHT),
     ],
@@ -79,8 +79,8 @@ def test_handedness_configuration(frames, make_tracker, raw, overrides, expected
 
 
 def test_two_hands_are_independent(frames, make_tracker, raw):
-    both = raw.result(hands=(raw.hand("Right", cx=0.2), raw.hand("Left", cx=0.7)))
-    right_only = raw.result(hands=(raw.hand("Left", cx=0.7),))  # -> anatomical RIGHT
+    both = raw.result(hands=(raw.hand("Left", cx=0.2), raw.hand("Right", cx=0.7)))
+    right_only = raw.result(hands=(raw.hand("Right", cx=0.7),))
     tracker, _ = make_tracker([both, right_only, right_only, right_only, both])
     make = frames()
     first = tracker.process(make())
@@ -121,8 +121,8 @@ def test_duplicate_model_labels_resolved(frames, make_tracker, raw):
     )
     tracker, _ = make_tracker([dup])
     pose = tracker.process(frames()())
-    assert [h.handedness for h in pose.hands] == [RIGHT, UNKNOWN]
-    assert pose.hand(RIGHT).handedness_score == 0.9
+    assert [h.handedness for h in pose.hands] == [LEFT, UNKNOWN]
+    assert pose.hand(LEFT).handedness_score == 0.9
 
 
 def test_person_leaving_and_returning(frames, make_tracker, raw):

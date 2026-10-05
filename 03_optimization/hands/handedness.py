@@ -14,5 +14,7 @@ Owner:
     Module 03 — Optimization Sequence (Teammate 3: spatial section)
 """
 
-# TODO: Account for camera mirroring (config flag).
-# TODO: Detect and correct left/right swaps across frames.
+# Inactive scaffold: anatomical mirror correction is implemented at the
+# producer boundary in MediaPipeHandTracker (hand_tracker.py). mirrored_input
+# is provenance only; consumers must not swap the shared handedness again.
+# Module 06's LandmarkStabilizer separately guards EMA against label flicker.

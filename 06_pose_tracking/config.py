@@ -27,11 +27,18 @@ class PoseTrackingConfig:
     min_hand_detection_confidence: float = 0.5
     min_hand_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
+    min_pose_visibility: float = 0.5
+    min_landmark_presence: float = 0.5
+    min_handedness_confidence: float = 0.5
+    # Hand Tasks exposes label confidence, not per-joint detection confidence.
+    hand_bbox_padding: float = 0.02
+    # Fraction of source width/height, independent of orientation.
     input_mirrored: bool = False
     # True when frames are horizontally flipped (selfie view) BEFORE inference.
     swap_handedness: bool | None = None
-    # None = MediaPipe convention: its hand labels assume mirrored input, so they
-    # are swapped when input_mirrored is False. Set explicitly to override.
+    # None = Tasks bundle convention verified with Google's right_hands.jpg:
+    # unmirrored labels are anatomical; mirrored inference needs a swap.
+    # Explicit override supports other/custom model label conventions.
     smoothing_alpha: float = 0.7
     # EMA weight of the newest observation; 1.0 disables extra smoothing.
     max_hold_frames: int = 2
@@ -44,7 +51,7 @@ class PoseTrackingConfig:
     @property
     def effective_swap_handedness(self) -> bool:
         return (
-            (not self.input_mirrored)
+            self.input_mirrored
             if self.swap_handedness is None
             else self.swap_handedness
         )
@@ -67,6 +74,10 @@ class PoseTrackingConfig:
             "min_hand_detection_confidence",
             "min_hand_presence_confidence",
             "min_tracking_confidence",
+            "min_pose_visibility",
+            "min_landmark_presence",
+            "min_handedness_confidence",
+            "hand_bbox_padding",
         ):
             value = getattr(self, name)
             if not _real(value) or not 0.0 <= value <= 1.0:

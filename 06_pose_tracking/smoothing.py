@@ -21,6 +21,7 @@ class _Track:
     last_seen_frame: int
     handedness_score: float | None = None
     model_handedness: str | None = None
+    consecutive_frames: int = 1
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,10 @@ class HandCandidate:
 
 
 def _centroid(landmarks: tuple[Landmark, ...]) -> tuple[float, float]:
-    n = len(landmarks)
-    return (sum(p.x for p in landmarks) / n, sum(p.y for p in landmarks) / n)
+    valid = [p for p in landmarks if p.is_valid]
+    if not valid:
+        return (0.0, 0.0)
+    return (sum(p.x for p in valid) / len(valid), sum(p.y for p in valid) / len(valid))
 
 
 def _blend(prev: tuple[Landmark, ...], new: tuple[Landmark, ...], alpha: float):
@@ -49,7 +52,9 @@ def _blend(prev: tuple[Landmark, ...], new: tuple[Landmark, ...], alpha: float):
             alpha * n.z + beta * p.z,
             n.visibility,
             n.presence,
+            n.is_valid,
         )
+        if p.is_valid and n.is_valid else n
         for p, n in zip(prev, new, strict=True)
     )
 
@@ -71,6 +76,10 @@ class LandmarkStabilizer:
     def state_size(self) -> int:
         """Number of live tracks (bounded by 3)."""
         return (self._body is not None) + len(self._hands)
+
+    @property
+    def body_consecutive_frames(self) -> int:
+        return self._body.consecutive_frames if self._body else 0
 
     def update(
         self,
@@ -96,6 +105,7 @@ class LandmarkStabilizer:
             self._body = self._observe(self._body, body, frame_id, jump)
             body_out = self._body.landmarks
         elif self._body is not None:
+            self._body.consecutive_frames = 0
             since = frame_id - self._body.last_seen_frame
             if 0 < since <= self.max_hold_frames:
                 body_out, body_since = self._body.landmarks, since
@@ -103,6 +113,10 @@ class LandmarkStabilizer:
                 self._body = None
 
         # Hands --------------------------------------------------------------
+        # Compare against the previous frame, never tracks already updated by
+        # another candidate in this frame. Labels can flicker between nearby
+        # physical hands without exceeding the ordinary jump-reset threshold.
+        previous_hands = dict(self._hands)
         output: dict[str, HandPose] = {}
         unknown: list[HandPose] = []
         for hand in hands:
@@ -116,9 +130,18 @@ class LandmarkStabilizer:
                     )
                 )
                 continue
-            track = self._observe(
-                self._hands.get(hand.handedness), hand.landmarks, frame_id, jump
-            )
+            previous = previous_hands.get(hand.handedness)
+            opposite_side = RIGHT if hand.handedness == LEFT else LEFT
+            opposite = previous_hands.get(opposite_side)
+            if (previous is not None and opposite is not None
+                    and 0 < frame_id - previous.last_seen_frame <= self.max_hold_frames + 1
+                    and 0 < frame_id - opposite.last_seen_frame <= self.max_hold_frames + 1):
+                center = _centroid(hand.landmarks)
+                if math.dist(center, _centroid(opposite.landmarks)) < math.dist(center, _centroid(previous.landmarks)):
+                    # Ambiguous physical association: publish the current
+                    # observation without cross-hand EMA or a continuity claim.
+                    previous = None
+            track = self._observe(previous, hand.landmarks, frame_id, jump)
             track.handedness_score = hand.handedness_score
             track.model_handedness = hand.model_handedness
             self._hands[hand.handedness] = track
@@ -127,12 +150,14 @@ class LandmarkStabilizer:
                 track.landmarks,
                 hand.handedness_score,
                 hand.model_handedness,
+                consecutive_frames=track.consecutive_frames,
             )
         for side in (LEFT, RIGHT):
             track = self._hands.get(side)
             if track is None or side in output:
                 continue
             since = frame_id - track.last_seen_frame
+            track.consecutive_frames = 0
             if 0 < since <= self.max_hold_frames:
                 output[side] = HandPose(
                     side,
@@ -141,6 +166,7 @@ class LandmarkStabilizer:
                     track.model_handedness,
                     observed=False,
                     frames_since_seen=since,
+                    consecutive_frames=0,
                 )
             else:
                 del self._hands[side]
@@ -150,11 +176,16 @@ class LandmarkStabilizer:
         return body_out, body_since, ordered
 
     def _observe(self, track: _Track | None, new, frame_id: int, jump: float) -> _Track:
+        consecutive = (
+            track.consecutive_frames + 1
+            if track is not None and frame_id == track.last_seen_frame + 1 else 1
+        )
         if (
             track is None
             or self.alpha >= 1.0
             or frame_id - track.last_seen_frame > self.max_hold_frames + 1
             or math.dist(_centroid(track.landmarks), _centroid(new)) > jump
         ):
-            return _Track(new, frame_id)
-        return _Track(_blend(track.landmarks, new, self.alpha), frame_id)
+            return _Track(new, frame_id, consecutive_frames=consecutive)
+        return _Track(_blend(track.landmarks, new, self.alpha), frame_id,
+                      consecutive_frames=consecutive)

@@ -11,8 +11,12 @@ pose_tracking:
   min_hand_detection_confidence: 0.5
   min_hand_presence_confidence: 0.5
   min_tracking_confidence: 0.5
+  min_pose_visibility: 0.5
+  min_landmark_presence: 0.5
+  min_handedness_confidence: 0.5
+  hand_bbox_padding: 0.02
   input_mirrored: false        # true when frames are flipped (selfie view) before inference
-  swap_handedness: null        # null = follow MediaPipe's mirrored-input convention
+  swap_handedness: null        # Tasks: swap only for mirrored inference; override for other models
   smoothing_alpha: 0.7         # 1.0 = no extra smoothing on top of MediaPipe's own
   max_hold_frames: 2           # lost body/hand re-published as held (observed=false)
   jump_reset_fraction: 0.15

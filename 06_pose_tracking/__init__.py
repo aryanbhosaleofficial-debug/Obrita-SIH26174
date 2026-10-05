@@ -3,7 +3,7 @@ Module 06 — Live Pose & Hand Tracking (parallel perception branch).
 
     PreparedFrame -> PoseHandTracker -> PoseFrame   (beside Module 02's ObjectFrame)
 
-Import-safe name: ``pose_tracking`` (registered by standalone.bootstrap()).
+Import-safe name: ``pose_tracking`` (root compatibility package).
 The numbered directory must never be imported with a normal statement.
 No HAR/FSM logic and no camera-"up" semantics live here.
 """
@@ -19,6 +19,7 @@ _EXPORTS = {
     "PoseTrackingConfig": "pose_tracking.config",
     "load_config": "pose_tracking.config",
     "render_overlay": "pose_tracking.visualization",
+    "TrackingIntegration": "pose_tracking.integration",
 }
 
 

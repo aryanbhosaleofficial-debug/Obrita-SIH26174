@@ -137,10 +137,16 @@ class MediaPipeHandTracker:
                 result.handedness[index] if index < len(result.handedness) else []
             )
             category = max(categories, key=lambda c: c.score) if categories else None
+            # Tasks labels are anatomical on unmirrored input. Correct once at
+            # the producer boundary; mirrored_input remains provenance only.
+            handedness = ({"left": "Left", "right": "Right"}.get(category.category_name.lower())
+                          if category and isinstance(category.category_name, str) else None)
+            if self.config.mirrored and handedness is not None:
+                handedness = "Right" if handedness == "Left" else "Left"
             hands.append(
                 HandObservation(
                     f"hand_{index}",
-                    category.category_name if category else None,
+                    handedness,
                     None,
                     landmarks,
                     Point2D(

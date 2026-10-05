@@ -1,293 +1,261 @@
 # Module 06 — Live Pose & Hand Tracking
 
-Real-time body-pose and two-hand landmark tracking with a live skeleton overlay.
-It is a **parallel perception branch**: it consumes the same `PreparedFrame` as
-Module 02 (YOLO) and publishes a `PoseFrame` for the same source frame. It does
-not use, modify or repurpose Module 03 (`03_optimization`).
+Offline CPU pose (33 joints) and hand (21 joints per hand) tracking for the SIH
+prototype. This is not flight-certified BAS software or microgravity validation.
+Module 06 owns landmark inference, confidence masks, EMA, coordinates and generic
+hand geometry. It does not own YOLO, rack detection, HAR, procedure correctness,
+FSM, alerts, logging services, GUI applications or streaming.
 
-This is an offline SIH demonstration prototype, not flight software.
-Landmark accuracy has **not** been evaluated.
+## Existing architecture and ownership
 
-> Rack-relative rotation testing is only a prototype approximation and does not
-> prove real microgravity performance.
+The authoritative package is `06_pose_tracking/`, imported as `pose_tracking`
+through the existing root locator. `contracts.py` defines one `PoseFrame` type;
+there is no second TrackingOutputPacket schema. `standalone.py` remains a direct
+script compatibility entry point. No package restructure is needed.
 
-## Why a new module (and why number 06)
-
-| Option | Decision |
-| --- | --- |
-| Extend `03_optimization/pose` (has an empty `PoseTracker` hook) | Rejected: Module 03 is reviewed/frozen, and the brief requires a parallel branch, not a repurposed 03 |
-| Put landmarks in `OptimizationOutputPacket` | Rejected: that packet is Module 03's contract |
-| New numbered module | **Chosen.** `01`–`05` are taken, so this is `06_pose_tracking/` |
-
-The numbered directory cannot be imported with a normal statement (repository
-rule, enforced by `tests/test_packet_contracts.py`). Its import-safe name is
-`pose_tracking`, registered by `standalone.bootstrap()`, the same technique
-Module 02 uses. A root-level `pose_tracking/` locator like `yolo/` is a
-proposed integration change (see [Integration requests](#integration-requests)).
-
-## Architecture
+`perception/hand_tracker.py` and `perception/pose_tracker.py` are compatibility
+imports for Module 03 helpers. Module 03's optional pose helper already delegates
+to Module 06's backend; its legacy hand helper remains unchanged. The new
+integration adapter consumes Module 03's existing reference transform rather
+than creating or detecting another workspace.
 
 ```text
-                    FramePacket (frame_id, timestamp_s, source_id, session_id)
-                              │
-                      Module 01 FrameProcessor
-                              │
-                         PreparedFrame
-                 ┌────────────┴─────────────┐
-                 ▼                          ▼
-     Module 02 YoloPipeline        Module 06 PoseHandTracker
-                 │                 (MediaPipe Pose + Hand Landmarker,
-                 │                  VIDEO mode, then LandmarkStabilizer)
-                 ▼                          ▼
-            ObjectFrame                  PoseFrame
-                 │                          │
-     Module 03 (unchanged)                  │
-                 │                          │
-       OptimizationOutputPacket             │
-                 └───────────┬──────────────┘
-                             ▼
-             future Interaction Fusion (pair by FrameKey)
-                             ▼
-                  Boundary / HAR / FSM (not here)
+FramePacket -> Module 01 FrameProcessor -> PreparedFrame
+   -> MediaPipe Pose + Hand Tasks (one RGB conversion, synchronous VIDEO mode)
+   -> source pixels -> confidence/visibility validity masks
+   -> LandmarkStabilizer (EMA, bounded hold, detection streaks)
+   -> normalized camera XY + optional calibrated rack XY; padded hand box
+   -> PoseFrame -> downstream interaction/HAR (outside this module)
 ```
 
-| File | Responsibility |
-| --- | --- |
-| `contracts.py` | `Landmark`, `HandPose`, `PoseFrame`, `FrameKey` (frozen, validated) |
-| `landmarks.py` | 33 body / 21 hand landmark names and skeleton edges (checked against MediaPipe in tests) |
-| `backends.py` | `MediaPipeLandmarkBackend` (the only MediaPipe code), `NullLandmarkBackend`, raw result types |
-| `smoothing.py` | `LandmarkStabilizer`: optional EMA + short, explicitly flagged hold; constant-size state |
-| `tracker.py` | `PoseHandTracker`: `PreparedFrame -> PoseFrame`, handedness, failure isolation, reset |
-| `sync.py` | `frame_key`, `require_synchronized`, `pair_with_objects`, adapters to shared `PoseObservation`/`HandObservation` |
-| `visualization.py` | `draw_pose`, `draw_hands`, `draw_objects`, `draw_status`, `render_overlay` (no inference) |
-| `sources.py` | `LatestFrameCamera` (one-slot newest-frame buffer), local video/image reader |
-| `cli.py`, `standalone.py`, `__main__.py` | Standalone preview |
-| `config.py`, `config/pose_tracking.yaml` | Settings; model paths resolve relative to the YAML |
-
-The detector never depends on the GUI: `tracker.py` imports no drawing code
-and `visualization.py` imports no model code.
-
-## Dependencies
-
-All already in the root `requirements.txt`: `mediapipe` (Tasks API), OpenCV,
-NumPy, PyYAML. Verified in this workspace with Python 3.11.16, mediapipe 1.0.1,
-opencv 5.0.0, numpy 2.4.6. No PyTorch pose model is used. `--yolo` additionally
-uses Module 02's existing Ultralytics stack.
-
-## Models / assets and offline setup
-
-| Model | Path (default config) | Source |
-| --- | --- | --- |
-| Pose Landmarker (lite) | `06_pose_tracking/models/pose_landmarker_lite.task` | official MediaPipe model page |
-| Hand Landmarker | `models/hand_landmarker.task` (shared with Module 03) | official MediaPipe model page |
-
-See [models/README.md](models/README.md) for URLs and checksums. One-time setup
-with network, then the module runs with no network: models load once from local
-files, a missing file is an `InitializationError` (never a download), and no
-cloud API or remote inference exists. `*.task` files are git-ignored by the
-root `.gitignore`, so each machine must install them.
+`TrackingIntegration.process(MilestoneResult)` also supports the actual Modules
+01–05 result: it checks Module 05's `ActivityEvent` identity, retains the upstream
+`PreparedFrame`, and consumes `optimization.spatial.reference_frame`. ActivityEvent
+has no image. Tracking does not interpret or modify the activity label.
 
 ## Input contract
 
-`shared.schemas.prepared_frame.PreparedFrame` from Module 01, which must retain
-its `source` `FramePacket`. Inference runs on `prepared.image` (possibly
-resized by Module 01). Normalized model output is mapped to **original source
-pixels** using the source width/height.
-
-- Frames rejected by Module 01 produce an empty `INVALID_INPUT` PoseFrame and
-  touch no state; Module 01's diagnostics are carried through.
-- One ordered `(source_id, session_id)` per tracker; `frame_id` and
-  `timestamp_s` must strictly increase. Call `reset()` before switching source.
-- `reset_required` (Module 01 time gap / resolution change) clears smoothing and hold.
-
-## Output contract — `PoseFrame`
+Use the existing Module 01 types, not a new frame dataclass:
 
 ```python
-@dataclass(frozen=True)
-class Landmark:
-    index: int; name: str
-    x: float; y: float            # ORIGINAL source pixels (may slightly exceed the image)
-    z: float                      # model-relative depth, unitless, NOT metric
-    visibility: float | None = None
-    presence: float | None = None
+from perception.core import FrameProcessor
+from shared.schemas.frame_packet import FramePacket
+from pose_tracking import PoseHandTracker, load_config
 
-@dataclass(frozen=True)
-class HandPose:
-    handedness: str               # "LEFT" | "RIGHT" | "UNKNOWN" (anatomical, after mirror handling)
-    landmarks: tuple[Landmark, ...]   # exactly 21, wrist..pinky_tip
-    handedness_score: float | None = None
-    model_handedness: str | None = None   # raw model label, for audit
-    observed: bool = True         # False = short hold of the last observation
-    frames_since_seen: int = 0    # 0 iff observed
-
-@dataclass(frozen=True)
-class PoseFrame:
-    frame_id: int; timestamp_s: float           # copied from the source FramePacket
-    body_landmarks: tuple[Landmark, ...] = ()   # 0 or 33
-    hands: tuple[HandPose, ...] = ()            # 0, 1 or 2 (at most one LEFT, one RIGHT)
-    body_detected: bool = False                 # observed in THIS frame
-    body_frames_since_seen: int = 0             # >0 = held body
-    source_id: str; session_id: str             # copied from the source
-    image_width: int; image_height: int
-    status: ModuleStatus                        # OK / NO_DETECTION / DEGRADED / INVALID_INPUT / ERROR
-    warnings: tuple[Diagnostic, ...]            # shared WarningCode diagnostics
-    processing_time_ms: float
-    body_score: float | None                    # mean visibility of an observed body
+packet = FramePacket(frame_id=0, timestamp_s=0.0, image=bgr_uint8,
+                     width=bgr_uint8.shape[1], height=bgr_uint8.shape[0],
+                     source_id="camera_0", session_id="demo", metadata={})
+prepared = FrameProcessor().process(packet)  # shared.schemas.PreparedFrame
+with PoseHandTracker(load_config()) as tracker:
+    tracked = tracker.process(prepared, workspace=None)
 ```
 
-Every instance validates itself (landmark counts/order, finite coordinates,
-scores in [0, 1], held/observed consistency, unique LEFT/RIGHT). Helpers:
-`frame.key`, `frame.hand("LEFT")`, `frame.body_landmark("left_wrist")`,
-`hand.wrist`, `hand.landmark("index_finger_tip")`, `hand.palm_center`, `hand.bbox_xyxy`.
+`PreparedFrame(image, scale_x, scale_y, source, status, warnings, notices,
+stage_timings_ms, missing_frames, reset_required, accepted)` is the real shared
+contract. It retains its original FramePacket. Core input is PreparedFrame,
+not a naked ndarray. None/empty/unsupported images are rejected by FrameProcessor
+and produce an INVALID_INPUT PoseFrame without inference. Passing an unrelated
+object to the typed tracker API raises TypeError; a source-less PreparedFrame
+raises ValueError. Frame IDs and timestamps must increase within one source and
+session; call `reset()` before switching streams.
 
-| Situation | Result |
-| --- | --- |
-| No person, no hands | `NO_DETECTION`, empty tuples — not an exception |
-| Hand / person leaves | Re-published as held (`observed=False`) for `max_hold_frames` (default 2), then removed |
-| Returns to frame | Observed again on the first detection |
-| Inference error on one frame | `ERROR` for that frame only; stream continues |
-| One of the two models failed to load | Other keeps running; `DEGRADED` with `POSE_/HAND_TRACKER_FAILURE` |
-| Both models fail to load | `InitializationError` at `initialize()` |
+Optional `workspace` is the shared `ReferenceFrameInfo`: `valid`, `reference_id`,
+`image_to_reference_matrix`, `axes_pixels`, `source`, `verified_this_frame`,
+`verified_timestamp_s`. A valid reference requires a finite nonsingular 3x3
+source-pixel-to-rack homography. Invalid availability falls back to camera
+coordinates; a malformed purportedly valid transform yields INVALID_INPUT.
 
-## Body and hand tracking
+## Output contract
 
-- **Body**: MediaPipe Pose Landmarker, `num_poses=1`, 33 landmarks (nose,
-  eyes, ears, shoulders, elbows, wrists, hips, knees, ankles, feet, ...).
-- **Hands**: MediaPipe Hand Landmarker, up to `max_hands` (default 2), 21
-  landmarks each. Hands are keyed by handedness so LEFT and RIGHT state stay
-  independent. Two hands with the same label: the higher score keeps it and
-  the other becomes `UNKNOWN` (never smoothed or held).
-- **Handedness and mirroring**: MediaPipe documents that its hand labels assume
-  mirrored (selfie) input. With `input_mirrored: false` (raw webcam) labels are
-  swapped to anatomical sides; `--mirror` flips frames before inference and keeps
-  labels. `swap_handedness` overrides this. **Not yet confirmed on the demo camera.**
-- **Smoothing**: MediaPipe VIDEO mode already tracks and smooths. On top,
-  `smoothing_alpha` (default 0.7, `1.0` = off, CLI `--no-smoothing`) applies an
-  EMA; a jump larger than `jump_reset_fraction` of the image diagonal restarts
-  instead of blending.
-- **No HAR**: no actions, gestures or camera-"up" rules (e.g. "wrist above
-  shoulder") exist here. Coordinates are preserved as-is for rack-, payload- or
-  object-relative reasoning downstream.
-
-## Live-stream behaviour and performance design
-
-- Synchronous VIDEO mode: one result per submitted frame, no callback queue.
-- `LatestFrameCamera` keeps only the newest frame. When processing is slower than
-  the camera, old frames are overwritten (counted as `dropped_frames_before` /
-  frame-ID gaps, which Module 01 reports) so latency cannot accumulate.
-- Capture timestamps use `perf_counter()`. Windows `time.monotonic()` ticks every
-  ~15.6 ms; in a live test it gave consecutive 30 FPS frames identical
-  timestamps and Module 01 rejected every other frame. A guard also keeps them
-  strictly increasing.
-- With `--yolo`, YOLO runs on a one-worker thread while pose runs on the main
-  thread, on the same `PreparedFrame`. At most one frame is in flight.
-- Models load once; per frame there is one BGR→RGB conversion and no disk or
-  network access. JSON serialization happens only with `--jsonl`. State is at most
-  one body + one LEFT + one RIGHT track, with no history deque.
-
-## Standalone command
-
-From the repository root (with the project `.venv`):
-
-```bash
-python -m 06_pose_tracking --camera 0              # live pose + hands
-python -m 06_pose_tracking --camera 0 --yolo       # + Module 02 boxes (02_yolo/config/standalone.yaml)
-python -m 06_pose_tracking --camera 0 --mirror     # selfie view
-python 06_pose_tracking/standalone.py --source clip.mp4 --no-display --jsonl pose.jsonl
-python -m 06_pose_tracking --source photo.jpg --output annotated.jpg --no-display
-```
-
-Keys: **Q / ESC** quit, **R** reset tracker state (smoothing, hold and MediaPipe
-tracking; YOLO tracking too with `--yolo`). Closing the window also quits.
-Options: `--config`, `--yolo-config`, `--no-smoothing`, `--camera-width/--camera-height`,
-`--output` (`.mp4` or image), `--jsonl`, `--max-frames`. Exit code 2 = setup or
-source failure with a one-line log reason; no traceback.
-
-The overlay shows body skeleton (white edges, orange joints), LEFT hand (green),
-RIGHT hand (blue), UNKNOWN (magenta), held parts (grey), YOLO boxes with class,
-confidence and track ID, plus a status line and measured FPS.
-
-## Integration with YOLO (Module 02)
+The exact public fields (defaults and validation live in `contracts.py`) are:
 
 ```python
-prepared = frame_processor.process(packet)      # Module 01
-objects = yolo_pipeline.process(prepared)       # Module 02 -> ObjectFrame
-pose = pose_tracker.process(prepared)           # Module 06 -> PoseFrame
-pose, objects = pair_with_objects(pose, objects)   # raises FrameSyncError if not the same frame
-display = render_overlay(prepared.source.image, pose, objects)
+Landmark(index: int, name: str, x: float, y: float, z: float,
+         visibility: float | None = None, presence: float | None = None,
+         is_valid: bool = True, normalized_xy: tuple[float, float] | None = None,
+         rack_xy: tuple[float, float] | None = None)
+
+HandPose(handedness: str, landmarks: tuple[Landmark, ...],
+         handedness_score: float | None = None, model_handedness: str | None = None,
+         observed: bool = True, frames_since_seen: int = 0,
+         consecutive_frames: int = 1,
+         bbox: tuple[float, float, float, float] | None = None)
+
+PoseFrame(frame_id: int, timestamp_s: float,
+          body_landmarks: tuple[Landmark, ...] = (), hands: tuple[HandPose, ...] = (),
+          body_detected: bool = False, body_frames_since_seen: int = 0,
+          source_id: str = "camera_0", session_id: str = "default",
+          image_width: int = 0, image_height: int = 0,
+          status: ModuleStatus = ModuleStatus.OK, warnings: tuple[Diagnostic, ...] = (),
+          processing_time_ms: float = 0.0, body_score: float | None = None,
+          coordinate_frame: CoordinateFrame = CoordinateFrame.IMAGE_PIXELS,
+          feature_coordinate_frame: CoordinateFrame = CoordinateFrame.NORMALIZED_IMAGE,
+          reference_id: str | None = None, body_consecutive_frames: int = 0,
+          inference_ms: float | None = None, metadata: dict = {}, input_mirrored: bool = False)
 ```
 
-Pairing is exact equality of `(source_id, session_id, frame_id, timestamp_s)`,
-not nearest-timestamp matching. Both coordinate systems are original source pixels.
+These are frozen dataclasses; dict defaults use a factory. Source metadata is
+copied. `key` includes source/session/frame/time. Convenience accessors include
+`has_observation`, `left_hand_detected`, `right_hand_detected`, `body_landmark(name)`,
+`hand(side)`, `HandPose.wrist`, `palm_center`, and legacy raw `bbox_xyxy`.
+`bbox` is padded and clamped to [0,width] x [0,height] pixel edges; None means no
+usable box. A palm center needs all five valid palm joints, otherwise None.
 
-## Integration with future hand–object fusion
+## Coordinates and microgravity approximation
 
-A fusion stage receives `PoseFrame` + `OptimizationOutputPacket` (whose
-`object_frame` keeps the same frame key) and can use, per frame:
-wrist/fingertip landmarks (`hand.landmark("index_finger_tip")`), `hand.palm_center`,
-`hand.bbox_xyxy`, `observed`/`frames_since_seen`, object `bbox`, `track_id`,
-`frame_id`, `timestamp_s`. Held hands must not be counted as fresh contact
-evidence. `to_hand_observations()` / `to_pose_observation()` produce Module 03's
-existing shared observation types if a consumer prefers those (observed only by
-default). Fusion should express proximity in object- or rack-relative units,
-not camera up/down.
+- Primary x/y: ORIGINAL source pixels, even when PreparedFrame was resized.
+- `normalized_xy`: x/width, y/height in the camera image. Out-of-view positions
+  may exceed [0,1]; retaining them is different from clamping boxes for rendering.
+- z: backend-relative, unitless pseudo-depth. It is not metric or rack depth.
+- `rack_xy`: optional normalized planar workspace coordinates from the supplied
+  reference. Invalid joints have no rack XY. A projective horizon invalidates
+  that joint rather than publishing infinity.
+- `feature_coordinate_frame`: shared enum `normalized_image` or `rack_relative`;
+  primary `coordinate_frame` is always `image_pixels`.
 
-## Tests
+No camera top/bottom is assigned physical meaning. The consumer must use the
+matching supplied calibration after a setup rotates. Tests cover synthetic
+0/90/180-degree coordinate equivalence; they do not prove rotated human landmark
+accuracy or performance in real microgravity. Rack-relative depth is unavailable.
+
+## Landmarks, confidence, smoothing
+
+All 33 MediaPipe pose joints are retained, including nose, shoulders, elbows,
+wrists and hips. Hands retain wrist and thumb CMC/MCP/IP/TIP, plus
+MCP/PIP/DIP/TIP for index/middle/ring/pinky. `landmarks.py` supplies names/indices
+and skeleton connections; tests compare them with the installed Tasks API.
+
+Low pose visibility or supplied joint presence sets `is_valid=False`, retaining
+index topology. All-invalid pose output is not a fresh pose. Missing backend
+scores remain None. Native Hand Tasks exposes handedness confidence, not a
+per-joint detection confidence; backend detection/presence/tracking thresholds
+are separate. Low/missing handedness confidence produces UNKNOWN while usable
+hand geometry remains. Duplicate labels retain the strongest side and mark the
+other UNKNOWN, avoiding two supposedly identical anatomical hands.
+
+EMA uses `alpha * current + (1-alpha) * previous`; alpha=1 disables extra smoothing.
+Invalid joints are never blended with valid history. Recovery from an invalid
+joint starts from the current observation. Missing labeled hands/body may be
+held for `max_hold_frames`, with observed=False / positive frames_since_seen;
+then expire. Streaks reset on loss or frame gaps. Time gaps, reset requests and
+inference failures clear stale history. State is bounded to three tracks.
+UNKNOWN hands have no stable association, so they are not held or smoothed.
+A side label is not a persistent person/hand identity; crossings can reset EMA.
+Before hand EMA, candidate centroids are compared with both live tracks from a
+snapshot of the previous frame. A candidate closer to the opposite track than
+its labelled track starts fresh, so a nearby label swap cannot cross-blend the
+two physical hands. This is an ambiguity reset, not a persistent identity or
+anatomical relabelling claim. Normal EMA and stale/hold/jump rules are unchanged.
+
+The legacy shared PoseObservation/HandObservation adapters cannot carry a
+per-joint validity mask, so they omit incomplete results instead of exporting
+invalid joints as trusted points. Fully valid results propagate rack coordinates.
+Consumers needing partial landmarks should use PoseFrame directly.
+
+## Mirroring
+
+Inference and display are separate. `--mirror-display` reflects the display
+image and drawing positions, then draws text normally so labels stay readable;
+frame coordinates and handedness remain unchanged. Legacy `--mirror`
+explicitly flips input BEFORE inference, sets input_mirrored=True, and therefore
+changes the coordinate grid. Do not combine it with a second upstream flip.
+
+The current Tasks version-1 bundle reports anatomical labels for Google's
+unmirrored `right_hands.jpg` and reversed labels when that fixture is mirrored.
+The prior legacy Solutions rule was incorrect for this backend. Default
+`swap_handedness: null` now swaps only mirrored inference. An explicit bool
+supports different/custom model conventions. Raw model labels remain auditable
+in model_handedness; visually left/right position is never used to infer a side.
+Check the actual demo camera convention with a known hand before the presentation.
+
+Shared `HandObservation.handedness` means anatomical handedness after mirror
+correction. Both Module 03's Tasks producer and Module 06's adapter publish the
+same title-case Left/Right convention (None when unknown). `mirrored_input` is
+metadata only; consumers must not swap handedness again.
+
+## Dependencies, configuration and local models
+
+Dependencies already exist: NumPy, OpenCV, PyYAML, MediaPipe Tasks. No new package
+was required. Actual environment verified: Python 3.14.7, MediaPipe 1.0.1,
+OpenCV 5.0.0, NumPy 2.5.3, PyYAML 6.0.3. This is an observed installation, not a
+claim that every Python/platform combination supports these versions.
+
+`config/pose_tracking.yaml` contains backend thresholds, visibility/presence,
+handedness confidence, max_hands, EMA/hold/jump/time-gap and box padding. Values
+are prototype defaults, not scientifically calibrated thresholds. YAML model
+paths resolve relative to that YAML; CLI --pose-model/--hand-model overrides
+resolve relative to the working directory. See [local model setup](models/README.md).
+No models are fabricated, committed or downloaded by runtime code. If one
+configured model cannot initialize, the other runs with DEGRADED diagnostics;
+if neither can initialize, startup fails clearly and closes resources.
+
+## Independent execution
+
+Run from the repository root:
 
 ```bash
-python -m pytest -q -p no:cacheprovider 06_pose_tracking/tests
+python -m 06_pose_tracking --source 0 --show --mirror-display
+python 06_pose_tracking/standalone.py --source clip.mp4 --no-show --jsonl tracking.jsonl
+python -m 06_pose_tracking --source clip.mp4 --show --draw-pose --draw-hands --max-hands 2
+python -m 06_pose_tracking --source clip.mp4 --no-show --no-draw-pose --output annotated.mp4
+python -m 06_pose_tracking --source 0 --pose-model /local/pose.task --hand-model /local/hand.task
 ```
 
-Add `--basetemp <writable dir>` where the system temp dir is not writable.
-81 tests, with no webcam, GPU, display or network (network calls are blocked
-by fixture):
+`--camera 0` is retained. q/Esc quits, r resets. Optional `--yolo` calls Module 02;
+it does not implement detection here. Inference models initialize once. Core
+classes never call imshow. LatestFrameCamera retains one newest frame; video files
+are sequential. EOF, Ctrl+C and camera failure close models, captures and writers.
+Diagnostics expose measured inference_ms, total processing_time_ms and live-loop
+FPS in the overlay; no benchmark number is promised. JSONL/output flags are
+standalone diagnostics, not an experiment logging subsystem.
+Local source existence or camera opening is checked before expensive model
+initialization. VIDEO timestamps are reserved before task inference so a partial
+pose/hand failure cannot cause a duplicate timestamp on the next submission.
 
-| File | Covers |
-| --- | --- |
-| `test_pose_frame_contract.py` | Schema validation, empty/one/two hands, held semantics, frozen/serializable, topology vs MediaPipe |
-| `test_pose_tracker_stage.py` | Metadata preservation, source-pixel mapping (incl. Module 01 resize), handedness config, two-hand independence, loss/return, failure isolation, upstream rejection/diagnostics, reset, load-once |
-| `test_pose_smoothing.py` | EMA arithmetic, jump reset, hold expiry, time gaps, reset, bounded state over 5000 frames |
-| `test_pose_sync.py` | Real Module 01 → Module 02 (`YoloPipeline`, injected mock detector) + Module 06 on the same `PreparedFrame`; mismatch rejection; shared-observation adapters |
-| `test_pose_overlay.py` | Detached rendering, held/empty frames, skipped low-visibility joints, mixed-frame refusal |
-| `test_pose_cli.py` | Latest-frame camera (fake capture): drop-not-queue, read failure, open failure, timestamp regression; headless CLI on generated video/image; YOLO-init failure fallback; missing models; entry points |
-| `test_pose_real_models.py` | Optional: real local `.task` models on synthetic frames (skips if absent) |
+## Main pipeline integration
 
-## Limitations
+```python
+from pose_tracking import TrackingIntegration
+milestone = existing_module01_to05_pipeline.process(packet)
+tracking = TrackingIntegration(tracker).process(milestone)
+# Pair tracking with milestone.upstream.objects for a downstream owner.
+```
 
-- Landmark accuracy, robustness to lighting/occlusion/gloves and the handedness
-  mirror convention have **not** been evaluated on the demo setup.
-- The visual checklist (skeleton follows movement, hands track, recovery after
-  leaving the frame) needs a person in front of the camera and was not performed
-  by the implementer; see the completion report.
-- Single person (`num_poses=1`). Monocular `z` is relative, not metric. World
-  (metric-ish) pose landmarks are not exported.
-- Hand identity is by handedness label only; a one-frame label flip can briefly
-  move a track (the jump guard prevents blending across it).
-- Pose and hands run sequentially in one thread; YOLO runs beside them.
-  Throughput depends on the machine. No FPS claim is made beyond the measured
-  values in the completion report.
-- `PoseFrame` lives in this module until promoted to `shared/schemas`.
-- Rack-relative rotation testing is only a prototype approximation and does not
-  prove real microgravity performance.
+Executable headless compositions reuse the real Modules 01–05 implementations:
 
-## Integration requests
+```bash
+python -m pose_tracking.pipeline_runner --synthetic --max-frames 36 --output tests_tmp/module06-pipeline.jsonl
+python -m pose_tracking.pipeline_runner --video clip.mp4 --model /local/experiment_objects.pt --pose-model /local/pose.task --hand-model /local/hand.task
+```
 
-These changes are outside Module 06 and were **not** made:
+Synthetic mode replaces inference only, with explicit synthetic diagnostics. It
+executes the real contracts, optimizer, boundary, fusion, tracker filtering, EMA
+and rack normalization, including observations and loss. The real full pipeline
+also needs Module 02 weights. They are absent in this checkout; real Modules
+01–06 YOLO execution is not claimed. The existing Module 03 hand helper remains
+an additional inference pass in that composition; sharing its inference cache
+would require a separately scoped ownership change.
 
-- **SCHEMA CHANGE REQUEST**: promote `Landmark`, `HandPose`, `PoseFrame` and
-  `FrameKey` from `06_pose_tracking/contracts.py` to `shared/schemas/pose_frame.py`,
-  export them from `shared/schemas/__init__.py`, and add `PoseFrame` to the
-  `PACKETS` list in `tests/test_packet_contracts.py`. Note: `PoseFrame` uses
-  frozen tuples and has no `target_track_id` (it describes the operator, not an
-  object). Shared `Landmark` (in `spatial_feature_packet.py`) is a different,
-  mutable Module 03 type; the name clash should be resolved during promotion.
-- **EXTERNAL CHANGE REQUIRED**: add a root locator `pose_tracking/__init__.py`
-  (same 5 lines as `yolo/__init__.py`, pointing to `06_pose_tracking`) so other
-  modules can `import pose_tracking` without the bootstrap.
-- **EXTERNAL CHANGE REQUIRED**: root `README.md` module table and Technology
-  table ("MediaPipe: 03A only") should list Module 06.
-- **CROSS-MODULE ISSUE (Module 02)**: `02_yolo/inputs/opencv_source.py` stamps
-  camera frames with `time.monotonic()`. On Windows this has ~15.6 ms resolution,
-  so at 30 FPS consecutive frames can share a timestamp. Module 06 hit exactly
-  this live (fixed locally with `perf_counter`). Module 02's owner should check
-  whether its standalone camera path is affected.
+## Tests and manual acceptance
+
+```bash
+python -m pytest -q 06_pose_tracking/tests
+python -m pytest -q
+python -c "import pose_tracking; from pose_tracking import PoseHandTracker; print('Module 06 import OK')"
+```
+
+Model-free fixtures block Python socket access. Real-model tests explicitly skip
+missing local .task files; positive sample tests separately skip missing local
+Google fixtures. No test downloads assets. See models/README.md for one-time
+sample setup. Tests cover contracts, EMA/reset/loss, confidence masks, source-size
+mapping, rotated homographies, boxes, failure isolation, mirror display, video
+read/write, lifecycle and full synthetic integration. See
+[verification checklist](DEFINITION_OF_DONE.md) for recorded runs and open checks.
+
+Manual command: `python -m 06_pose_tracking --source 0 --show --mirror-display`.
+Confirm skeletons follow motion, both known hands get correct labels, q/Esc exits,
+and temporary loss recovers. Test one/both hands, crossing, each hand leaving,
+partial body, person rotating, and rack/setup at 90/180 degrees with appropriate
+calibration supplied through the API. These physical scenarios have not been
+verified in this repair. Hand accuracy, occlusion tolerance and latency across
+deployment machines are unmeasured; this is a hackathon approximation.

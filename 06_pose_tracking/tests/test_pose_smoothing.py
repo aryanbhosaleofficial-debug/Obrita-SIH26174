@@ -114,3 +114,37 @@ def test_tracker_holds_no_frame_history(frames, make_tracker, raw):
         for v in vars(tracker).values()
     )
     assert tracker.stabilizer.state_size == 3
+
+
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_nearby_label_swap_never_cross_blends_physical_hands(config, reverse_order):
+    s = LandmarkStabilizer(config(smoothing_alpha=.7))
+    s.update(0, 0., DIAG, None, [hand(LEFT, 256), hand(RIGHT, 320)])
+    swapped = [hand(LEFT, 320), hand(RIGHT, 256)]
+    if reverse_order:
+        swapped.reverse()
+    _, _, hands = s.update(1, .03, DIAG, None, swapped)
+    positions = {h.handedness: h.wrist.x for h in hands}
+    assert positions == {LEFT: 320, RIGHT: 256}
+    assert all(h.consecutive_frames == 1 for h in hands)
+    # Labels can recover next frame without blending either opposite track.
+    _, _, recovered = s.update(2, .06, DIAG, None, [hand(LEFT, 256), hand(RIGHT, 320)])
+    assert {h.handedness: h.wrist.x for h in recovered} == {LEFT: 256, RIGHT: 320}
+
+
+def test_normal_nearby_two_hand_ema_unchanged(config):
+    s = LandmarkStabilizer(config(smoothing_alpha=.7))
+    s.update(0, 0., DIAG, None, [hand(LEFT, 256), hand(RIGHT, 320)])
+    _, _, hands = s.update(1, .03, DIAG, None, [hand(LEFT, 266), hand(RIGHT, 330)])
+    positions = {h.handedness: h.wrist.x for h in hands}
+    assert positions[LEFT] == pytest.approx(263)
+    assert positions[RIGHT] == pytest.approx(327)
+    assert all(h.consecutive_frames == 2 for h in hands)
+
+
+def test_expired_opposite_hand_cannot_reset_live_hand_ema(config):
+    s = LandmarkStabilizer(config(smoothing_alpha=.7, max_hold_frames=1))
+    s.update(0, 0., DIAG, None, [hand(LEFT, 256), hand(RIGHT, 320)])
+    s.update(1, .03, DIAG, None, [hand(LEFT, 256)])
+    _, _, hands = s.update(3, .09, DIAG, None, [hand(LEFT, 300)])
+    assert len(hands) == 1 and hands[0].wrist.x == pytest.approx(286.8)

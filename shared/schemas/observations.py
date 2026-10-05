@@ -108,6 +108,12 @@ class Detection:
 
 @dataclass
 class HandObservation:
+    """Hand evidence with anatomical handedness after mirror correction.
+
+    Known labels ``Left`` / ``Right`` mean the subject's anatomical left/right
+    hand, regardless of input mirroring; None means unknown. ``mirrored_input``
+    is metadata only. Consumers must not perform another handedness swap.
+    """
     hand_id: str | None
     handedness: str | None
     confidence: float | None
@@ -120,6 +126,7 @@ class HandObservation:
     continuity_key: int | None = None
     identity_ambiguous: bool = False
     mirrored_input: bool = False
+    # Provenance only; handedness has already been corrected by the producer.
 
 
 @dataclass

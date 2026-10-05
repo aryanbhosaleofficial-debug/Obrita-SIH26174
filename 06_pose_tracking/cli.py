@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--camera", type=int, help="local camera index, e.g. 0")
-    source.add_argument("--source", type=Path, help="local video or image file")
+    source.add_argument("--source", type=Path, help="camera index (e.g. 0), local video or image file")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument(
         "--yolo", action="store_true", help="also run Module 02 object boxes"
@@ -54,12 +54,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mirror", action="store_true", help="selfie view: flip before inference"
     )
+    parser.add_argument("--mirror-display", action="store_true",
+                        help="mirror only the rendered preview; inference coordinates unchanged")
+    parser.add_argument("--pose-model", type=Path, help="local pose .task; overrides YAML")
+    parser.add_argument("--hand-model", type=Path, help="local hand .task; overrides YAML")
+    parser.add_argument("--max-hands", type=int)
+    parser.add_argument("--draw-pose", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--draw-hands", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--no-smoothing", action="store_true", help="publish raw model landmarks"
     )
     parser.add_argument("--camera-width", type=int)
     parser.add_argument("--camera-height", type=int)
-    parser.add_argument("--no-display", action="store_true")
+    display = parser.add_mutually_exclusive_group()
+    display.add_argument("--no-display", "--no-show", dest="no_display", action="store_true")
+    display.add_argument("--show", dest="no_display", action="store_false")
+    parser.set_defaults(no_display=False)
     parser.add_argument(
         "--output", type=Path, help="annotated .mp4 (stream) or image file"
     )
@@ -106,11 +116,44 @@ def main(argv=None) -> int:
         if args.max_frames is not None and args.max_frames < 1:
             raise ValueError("--max-frames must be positive")
         overrides = {"input_mirrored": True} if args.mirror else {}
+        for name in ("pose_model", "hand_model"):
+            if getattr(args, name) is not None:
+                overrides[name + "_path"] = getattr(args, name).resolve()
+        if args.max_hands is not None:
+            overrides["max_hands"] = args.max_hands
         if args.no_smoothing:
             overrides["smoothing_alpha"] = 1.0
         config = load_config(args.config, **overrides)
+        # Refuse accidental overwriting of the input, YAML, or either model.
+        protected = {p.resolve() for p in (args.source, args.config, config.pose_model_path,
+                                           config.hand_model_path) if p is not None}
+        outputs = [p.resolve() for p in (args.output, args.jsonl) if p is not None]
+        if any(p in protected for p in outputs) or len(outputs) != len(set(outputs)):
+            raise ValueError("output paths must differ from input/config/model paths and each other")
+        # Check source availability before loading either expensive model stage.
+        if args.source is not None and str(args.source).isdigit():
+            args.camera = int(str(args.source))
+        if args.camera is not None:
+            camera = LatestFrameCamera(
+                args.camera, width=args.camera_width, height=args.camera_height
+            )
+            frames = _camera_frames(camera)
+            source_id = f"camera_{args.camera}"
+            single_image = False
+        else:
+            if not args.source.is_file():
+                raise SourceError(f"local source file not found: {args.source}")
+            frames = file_frames(args.source)
+            source_id = args.source.name
+            single_image = args.source.suffix.lower() in IMAGE_SUFFIXES
+        if args.output:
+            suffix = args.output.suffix.lower()
+            if single_image != (suffix in IMAGE_SUFFIXES) or (
+                not single_image and suffix != ".mp4"
+            ):
+                raise ValueError("--output must be an image for image input, else .mp4")
         tracker = PoseHandTracker(config)
-        tracker.initialize()  # models load once, here
+        tracker.initialize()  # models load once, after source validation
         notes: list[str] = []
         if args.yolo:
             try:
@@ -121,23 +164,6 @@ def main(argv=None) -> int:
             except Exception as exc:  # noqa: BLE001 -- pose preview continues without boxes
                 LOGGER.error("YOLO unavailable, continuing pose-only: %s", exc)
                 notes.append("YOLO: unavailable (see log)")
-        if args.camera is not None:
-            camera = LatestFrameCamera(
-                args.camera, width=args.camera_width, height=args.camera_height
-            )
-            frames = _camera_frames(camera)
-            source_id = f"camera_{args.camera}"
-            single_image = False
-        else:
-            frames = file_frames(args.source)
-            source_id = args.source.name
-            single_image = args.source.suffix.lower() in IMAGE_SUFFIXES
-        if args.output:
-            suffix = args.output.suffix.lower()
-            if single_image != (suffix in IMAGE_SUFFIXES) or (
-                not single_image and suffix != ".mp4"
-            ):
-                raise ValueError("--output must be an image for image input, else .mp4")
         if args.jsonl:
             jsonl = args.jsonl.open("w", encoding="utf-8")
 
@@ -171,7 +197,10 @@ def main(argv=None) -> int:
                 jsonl.write(json.dumps(asdict(pose)) + "\n")
             if not args.no_display or args.output:
                 display = render_overlay(
-                    prepared.source.image, pose, objects, fps=fps, extra_lines=notes
+                    prepared.source.image, pose, objects, fps=fps, extra_lines=notes,
+                    show_pose=args.draw_pose, show_hands=args.draw_hands,
+                    min_visibility=config.min_pose_visibility,
+                    mirror_display=args.mirror_display,
                 )
                 if args.output and single_image:
                     if not cv2.imwrite(str(args.output), display):
@@ -225,6 +254,8 @@ def main(argv=None) -> int:
             writer.release()
         if jsonl is not None:
             jsonl.close()
+        if 'frames' in locals() and hasattr(frames, "close"):
+            frames.close()
         for stage in (yolo, tracker):
             if stage is not None:
                 stage.close()

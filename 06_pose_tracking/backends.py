@@ -179,6 +179,10 @@ class MediaPipeLandmarkBackend:
         )
         rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
+        # Reserve the VIDEO timestamp before either task sees it. A task can
+        # accept T then raise, or pose can accept T before hands fails. Retrying
+        # within the same millisecond must still submit a strictly newer value.
+        self._last_ms = timestamp_ms
         body = None
         if self._pose is not None:
             result = self._pose.detect_for_video(image, timestamp_ms)
@@ -204,7 +208,6 @@ class MediaPipeLandmarkBackend:
                         _score(best.score) if best else None,
                     )
                 )
-        self._last_ms = timestamp_ms
         return RawResult(
             body,
             tuple(hands),

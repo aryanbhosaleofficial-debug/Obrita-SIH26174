@@ -1,31 +1,37 @@
-# Module 06 Pipeline — PreparedFrame → PoseFrame
+# Module 06 processing and integration
 
 ```text
-PreparedFrame (Module 01, source FramePacket retained)
-  │
-  ├─ 1. Type/source check ............ TypeError / ValueError (programming errors)
-  ├─ 2. Upstream rejected? ........... yes → PoseFrame(INVALID_INPUT, Module 01 diagnostics), no state change
-  ├─ 3. Same source/session? ......... no  → INVALID_INPUT (SOURCE_CHANGED); reset() first
-  ├─ 4. frame_id / timestamp increase? no  → INVALID_INPUT (NON_MONOTONIC_FRAME)
-  ├─ 5. reset_required? .............. yes → clear smoothing + hold (TEMPORAL_HISTORY_RESET)
-  │
-  ├─ 6. Backend (models loaded once)
-  │      BGR → RGB (one copy) → MediaPipe Pose Landmarker  (VIDEO, num_poses=1)
-  │                           → MediaPipe Hand Landmarker  (VIDEO, num_hands=max_hands)
-  │      exception → PoseFrame(ERROR, POSE_TRACKER_FAILURE) for this frame only
-  │
-  ├─ 7. Normalized → ORIGINAL source pixels (x*width, y*height); invalid sets dropped
-  ├─ 8. Handedness: model label → LEFT/RIGHT (mirror convention) → duplicate → UNKNOWN
-  ├─ 9. LandmarkStabilizer (≤ 1 body + 1 LEFT + 1 RIGHT track)
-  │      observed: EMA blend (alpha; jump → restart)
-  │      missing:  held for ≤ max_hold_frames (observed=False), then dropped
-  │      time gap > max_time_gap_s: clear
-  │
-  └─ 10. PoseFrame(frame_id, timestamp_s, source_id, session_id copied from source)
-          status: warnings → DEGRADED; else OK if anything observed; else NO_DETECTION
-
-Standalone loop (cli.py)
-  LatestFrameCamera (1-slot, newest wins) → FramePacket → FrameProcessor
-     → [YOLO on worker thread ‖ PoseHandTracker] on the SAME PreparedFrame
-     → render_overlay (refuses mismatched frames) → imshow / --output / --jsonl
+PreparedFrame (source FramePacket retained)
+ -> validate type, upstream acceptance, reference matrix, source/session and ordering
+ -> load local MediaPipe Tasks models once (Pose + Hand, synchronous VIDEO)
+ -> normalized backend positions -> original source pixels
+ -> visibility/presence validity masks; confident anatomical handedness or UNKNOWN
+ -> compare hand centroids with both previous live tracks; reset ambiguous label association
+ -> EMA per valid joint, bounded hold, streak/reset/loss handling
+ -> camera normalized XY + optional existing image-to-rack homography
+ -> padded/clamped source-pixel hand box
+ -> PoseFrame (identity, metadata, explicit coordinates, validity, measured timings)
+ -> downstream interaction / HAR (outside Module 06)
 ```
+
+`TrackingIntegration` consumes the existing `MilestoneResult`: retained
+`upstream.prepared`, synchronized ActivityEvent/BoundaryOutputPacket/ObjectFrame,
+and `upstream.optimization.spatial.reference_frame`. It does not interpret the
+activity or detect a workspace. `pipeline_runner` composes this adapter with the
+existing MilestonePipeline for both real sources and explicit inference fakes.
+
+Unavailable reference -> normalized_image. Malformed valid reference ->
+INVALID_INPUT before inference/state advancement. Invalid upstream images skip
+inference. Per-frame backend failure -> empty ERROR packet and clear EMA; the
+next frame can recover. Missing models are explicit startup errors; one-model
+availability is DEGRADED. No runtime network access or automatic asset downloads.
+
+Core tracking is headless. Optional visualization draws on a detached original
+source image and skips invalid joints. --mirror-display transforms that rendered
+copy only; --mirror explicitly changes inference input and handedness correction.
+The display mirror is applied before readable text, with reflected draw positions.
+Shared HandObservation handedness is anatomical after correction; mirrored_input
+is provenance only. Module 03 and Module 06 follow this same producer contract.
+
+All existing compatibility imports and Module 01–05 implementations remain.
+See README.md for exact contracts, runner commands and limitations.

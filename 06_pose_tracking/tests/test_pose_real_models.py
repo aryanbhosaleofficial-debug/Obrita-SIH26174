@@ -6,10 +6,14 @@ empty-scene behaviour and partial-model degradation, NOT landmark accuracy.
 
 from dataclasses import replace
 from pathlib import Path
+import os
 
+import cv2
 import pytest
 from pose_tracking.config import load_config
 from pose_tracking.tracker import PoseHandTracker
+from perception.core import FrameProcessor
+from shared.schemas.frame_packet import FramePacket
 
 from shared.diagnostics import WarningCode
 from shared.enums.module_status import ModuleStatus
@@ -36,3 +40,39 @@ def test_real_hand_model_alone_when_pose_model_missing(frames):
         pose = tracker.process(frames(320, 240)())
     assert pose.status == ModuleStatus.DEGRADED
     assert WarningCode.POSE_TRACKER_FAILURE in {w.code for w in pose.warnings}
+
+
+def sample(name):
+    directory = Path(os.environ.get("SIH_MODULE06_SAMPLE_DIR", "tests_tmp/module06"))
+    path = directory / name
+    if not path.is_file():
+        pytest.skip(f"optional local Google sample missing: {path}; see Module 06 models README")
+    image = cv2.imread(str(path))
+    assert image is not None, f"cannot decode supplied sample {path}"
+    return image
+
+
+def prepared(image):
+    h, w = image.shape[:2]
+    return FrameProcessor().process(FramePacket(0, 0.0, image, w, h))
+
+
+def test_real_pose_positive_sample():
+    with PoseHandTracker(CONFIG) as tracker:
+        output = tracker.process(prepared(sample("pose.jpg")))
+    assert output.body_detected and len(output.body_landmarks) == 33
+    assert any(p.is_valid for p in output.body_landmarks)
+    assert output.inference_ms > 0
+
+
+@pytest.mark.parametrize("mirrored", [False, True])
+def test_real_two_hands_and_tasks_mirror_convention(mirrored):
+    image = sample("right_hands.jpg")  # Google's two-right-hands fixture, NOT one person
+    if mirrored:
+        image = cv2.flip(image, 1)
+    with PoseHandTracker(replace(CONFIG, input_mirrored=mirrored)) as tracker:
+        output = tracker.process(prepared(image))
+    assert len(output.hands) == 2 and output.right_hand_detected
+    assert not output.left_hand_detected  # duplicate side is explicitly UNKNOWN
+    assert all(h.model_handedness == ("Left" if mirrored else "Right") for h in output.hands)
+    assert all(len(h.landmarks) == 21 and h.observed for h in output.hands)

@@ -1,8 +1,7 @@
 """PoseFrame contract: body + hand landmarks for exactly one source frame.
 
-Proposed shared packet. It lives in this module until the integration owner
-promotes it to ``shared/schemas`` (see README "Schema change request"); the
-field names follow the existing shared conventions:
+Authoritative Module 06 packet, imported through ``pose_tracking.contracts``.
+The field names follow the existing shared conventions:
 
     frame_id, timestamp_s, source_id, session_id
         Copied unchanged from the PreparedFrame's source FramePacket, so a
@@ -18,8 +17,9 @@ field names follow the existing shared conventions:
     status
         Shared ModuleStatus. "No person / no hands" is NO_DETECTION, not an error.
 
-Coordinates are camera-image coordinates only. No camera "up"/"down" semantics
-are derived here; rack-relative reasoning belongs to downstream modules.
+Pixel x/y remain backward compatible. normalized_xy and optional rack_xy are
+explicit secondary representations; z is never transformed into rack depth.
+No camera "up"/"down" or gravity semantics are derived here.
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from pose_tracking.landmarks import (
 
 from shared.diagnostics import Diagnostic
 from shared.enums.module_status import ModuleStatus
+from shared.schemas.observations import CoordinateFrame
 
 LEFT = "LEFT"
 RIGHT = "RIGHT"
@@ -83,12 +84,22 @@ class Landmark:
     z: float
     visibility: float | None = None
     presence: float | None = None
+    is_valid: bool = True
+    normalized_xy: tuple[float, float] | None = None
+    rack_xy: tuple[float, float] | None = None
 
     def __post_init__(self):
         if not _finite(self.x) or not _finite(self.y) or not _finite(self.z):
             raise PoseContractError(f"landmark {self.name} coordinates must be finite")
         if not _score_ok(self.visibility) or not _score_ok(self.presence):
             raise PoseContractError(f"landmark {self.name} scores must be in [0, 1]")
+        if type(self.is_valid) is not bool:
+            raise PoseContractError("is_valid must be boolean")
+        for xy in (self.normalized_xy, self.rack_xy):
+            if xy is not None and (len(xy) != 2 or not all(_finite(v) for v in xy)):
+                raise PoseContractError("secondary coordinates must be finite XY pairs")
+        if not self.is_valid and self.rack_xy is not None:
+            raise PoseContractError("invalid landmarks cannot expose rack coordinates")
 
 
 def _check_landmarks(landmarks, names, what):
@@ -116,6 +127,9 @@ class HandPose:
     # Raw model label before any mirror correction, kept for audit.
     observed: bool = True
     frames_since_seen: int = 0
+    consecutive_frames: int = 1
+    bbox: tuple[float, float, float, float] | None = None
+    # Padded, clamped source-pixel box; bbox_xyxy retains its legacy raw extent.
 
     def __post_init__(self):
         if self.handedness not in HANDEDNESS_VALUES:
@@ -123,6 +137,13 @@ class HandPose:
         _check_landmarks(self.landmarks, HAND_LANDMARK_NAMES, "hand")
         if not _score_ok(self.handedness_score):
             raise PoseContractError("handedness_score must be in [0, 1]")
+        if type(self.consecutive_frames) is not int or self.consecutive_frames < 0:
+            raise PoseContractError("consecutive_frames must be nonnegative")
+        if self.bbox is not None:
+            if (not isinstance(self.bbox, tuple) or len(self.bbox) != 4
+                    or not all(_finite(v) and v >= 0 for v in self.bbox)
+                    or self.bbox[0] >= self.bbox[2] or self.bbox[1] >= self.bbox[3]):
+                raise PoseContractError("bbox must be a finite, nonnegative, ordered XYXY tuple")
         if (
             not isinstance(self.frames_since_seen, Integral)
             or isinstance(self.frames_since_seen, bool)
@@ -141,8 +162,10 @@ class HandPose:
         return self.landmarks[HAND_INDEX[name]]
 
     @property
-    def palm_center(self) -> tuple[float, float]:
+    def palm_center(self) -> tuple[float, float] | None:
         pts = [self.landmarks[i] for i in PALM_INDICES]
+        if not all(p.is_valid for p in pts):
+            return None
         return (sum(p.x for p in pts) / len(pts), sum(p.y for p in pts) / len(pts))
 
     @property
@@ -171,6 +194,13 @@ class PoseFrame:
     processing_time_ms: float = 0.0
     body_score: float | None = field(default=None)
     # Mean landmark visibility of the observed body; None when not observed.
+    coordinate_frame: CoordinateFrame = CoordinateFrame.IMAGE_PIXELS
+    feature_coordinate_frame: CoordinateFrame = CoordinateFrame.NORMALIZED_IMAGE
+    reference_id: str | None = None
+    body_consecutive_frames: int = 0
+    inference_ms: float | None = None
+    metadata: dict = field(default_factory=dict)
+    input_mirrored: bool = False
 
     def __post_init__(self):
         if (
@@ -187,6 +217,16 @@ class PoseFrame:
             raise PoseContractError("session_id must be a nonempty string")
         if not isinstance(self.status, ModuleStatus):
             raise PoseContractError("status must be a shared ModuleStatus")
+        if self.coordinate_frame != "image_pixels":
+            raise PoseContractError("primary x/y must remain source image_pixels")
+        if self.feature_coordinate_frame not in (CoordinateFrame.NORMALIZED_IMAGE, CoordinateFrame.RACK_RELATIVE):
+            raise PoseContractError("unsupported feature coordinate frame")
+        if type(self.body_consecutive_frames) is not int or self.body_consecutive_frames < 0:
+            raise PoseContractError("body_consecutive_frames must be nonnegative")
+        if self.inference_ms is not None and (not _finite(self.inference_ms) or self.inference_ms < 0):
+            raise PoseContractError("inference_ms must be finite and nonnegative")
+        if type(self.input_mirrored) is not bool:
+            raise PoseContractError("input_mirrored must be boolean")
         if self.body_landmarks:
             _check_landmarks(self.body_landmarks, BODY_LANDMARK_NAMES, "body")
         elif not isinstance(self.body_landmarks, tuple):
@@ -228,6 +268,14 @@ class PoseFrame:
     def has_observation(self) -> bool:
         """Anything observed in THIS frame (held landmarks excluded)."""
         return self.body_detected or any(h.observed for h in self.hands)
+
+    @property
+    def left_hand_detected(self) -> bool:
+        return any(h.handedness == LEFT and h.observed for h in self.hands)
+
+    @property
+    def right_hand_detected(self) -> bool:
+        return any(h.handedness == RIGHT and h.observed for h in self.hands)
 
     def hand(self, side: str) -> HandPose | None:
         """LEFT/RIGHT hand if present (observed or held), else None."""
