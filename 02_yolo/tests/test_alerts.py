@@ -1,4 +1,4 @@
-"""Mocked Piper/audio boundaries: these timings are NOT real speaker benchmarks."""
+"""Mocked Piper/audio boundaries: these timings are NOT the real speaker benchmarks."""
 
 import json
 import sys

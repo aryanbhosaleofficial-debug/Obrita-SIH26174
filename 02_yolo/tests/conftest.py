@@ -1,4 +1,4 @@
-"""Model-free Module 02 fixtures; production code never imports these mocks."""
+"""Model-free Module 02 fixtures. Production code never imports these mocks."""
 
 import socket
 import sys

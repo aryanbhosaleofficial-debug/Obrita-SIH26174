@@ -1,4 +1,4 @@
-"""MediaPipe Tasks Hand Landmarker isolated behind a BGR pixel interface."""
+"""MediaPipe Tasks hand tracking isolated behind a BGR pixel interface."""
 
 from __future__ import annotations
 
