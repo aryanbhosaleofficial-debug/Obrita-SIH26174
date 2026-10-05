@@ -15,7 +15,7 @@ def test_fsm_accepts_expected_event_sequence():
 
     event_1 = ActivityEvent(
         event_id="evt_1",
-        activity_label="PLACEHOLDER_ACTIVITY",
+        activity_label=definition.steps[0].expected_activity,
         frame_id=10,
         timestamp_s=1.0,
         start_frame_id=10,
@@ -30,7 +30,7 @@ def test_fsm_accepts_expected_event_sequence():
 
     event_2 = ActivityEvent(
         event_id="evt_2",
-        activity_label="PLACEHOLDER_ACTIVITY_2",
+        activity_label=definition.steps[1].expected_activity,
         frame_id=20,
         timestamp_s=2.0,
         start_frame_id=20,

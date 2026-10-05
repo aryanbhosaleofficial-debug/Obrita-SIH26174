@@ -1,7 +1,7 @@
 """OpenCV camera, local video and image reader with deterministic cleanup."""
 
 from pathlib import Path
-from time import monotonic
+from time import perf_counter
 
 import cv2
 
@@ -46,7 +46,8 @@ class OpenCVSource:
             yield 0, 0.0, self.image
             return
         frame_id = 0
-        started = monotonic()
+        started = perf_counter()
+        last_timestamp = -1.0
         assert self.capture is not None  # initialized for every non-image source
         while True:
             ok, image = self.capture.read()
@@ -55,11 +56,12 @@ class OpenCVSource:
                     raise InputSourceError("camera/source frame read failed")
                 break  # OpenCV does not reliably distinguish EOF and corrupt video.
             timestamp = (
-                monotonic() - started
+                max(perf_counter() - started, last_timestamp + 1e-6)
                 if isinstance(self.source, int)
                 else frame_id / self.fps
             )
             yield frame_id, timestamp, image
+            last_timestamp = timestamp
             frame_id += 1
 
     def close(self):

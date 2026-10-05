@@ -215,8 +215,8 @@ matching original `FramePacket`. It verifies nested metadata/coordinates,
 current evidence versus the latest snapshot, stable membership, ordering,
 presence flags, confidence, and detection accounting. It accepts healthy
 warm-up, empty, and short-gap packets while quality remains explicit.
-Module 04 segmentation/contour/target-selection algorithms are still team-owned
-scaffolds; this work verifies the receiving contract, not completed segmentation.
+Module 04 now executes segmentation, contours and target selection in the real
+milestone runner; see [the repair report](../MODULES_01_05_REPAIR.md).
 
 ## CLI and tests
 
@@ -257,8 +257,13 @@ No heavy tracker, learned smoothing model, HAR logic, or cloud dependency was
 added. No bbox interpolation/extrapolation is performed; held bboxes are stale
 by design and flagged. IoU can lose continuity under rapid motion without IDs.
 The bounded snapshot window contains processed frames, not every missing frame.
-Performance and field accuracy are not benchmarked. Full boundary/HAR/FSM
-execution and unused pose/skeleton/gesture scaffolds are outside this repair.
+Performance and field accuracy are not benchmarked. Modules 01–05 execute via
+`python scripts/run_fusion.py --synthetic`. The real optional body helper can be
+enabled with `--pose-model` or `--pose-config`: `MediaPipePoseTracker` adapts the
+existing local Module 06 backend without changing Module 03's packet types.
+Pose is disabled by default; hand inference remains configured by
+`configs/optimization.yaml` or `--hand-model`. Missing enabled models are startup
+errors. Unused historical pose/skeleton/gesture planning files remain inactive.
 
 See [PIPELINE.md](PIPELINE.md), [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md),
 [executed verification](VERIFICATION.md), and the

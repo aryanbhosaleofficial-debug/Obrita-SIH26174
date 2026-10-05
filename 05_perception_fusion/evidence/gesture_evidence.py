@@ -1,17 +1,6 @@
-"""
-Gesture evidence extraction.
+"""Only confirmed, scored gestures contribute to baseline rules."""
 
-Implementation status:
-    Scaffold only.
 
-Input:
-    GestureResult
-
-Output:
-    Gesture evidence item
-
-Owner:
-    Module 05 — Perception Fusion
-"""
-
-# TODO: Only use confirmed gestures as strong evidence.
+def extract(packet):
+    gesture = packet.gesture
+    return (gesture.label, gesture.confidence) if gesture and gesture.confirmed and gesture.label != "unknown" and gesture.confidence is not None else None

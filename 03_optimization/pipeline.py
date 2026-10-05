@@ -202,7 +202,11 @@ class OptimizationPipeline:
         try:
 
             def poses():
-                raw = self.pose_tracker.track(prepared.image)
+                raw = (
+                    self.pose_tracker.track_at(prepared.image, source.timestamp_s)
+                    if hasattr(self.pose_tracker, "track_at")
+                    else self.pose_tracker.track(prepared.image)
+                )
                 output = [prepared.source_pose(p) for p in raw]
                 if any(
                     not valid_score(p.confidence)

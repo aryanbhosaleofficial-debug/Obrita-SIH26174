@@ -1,61 +1,48 @@
-# =============================================================================
-# fusion.yaml — Module 05 Perception Fusion
-#
-# PLACEHOLDER CONFIGURATION. Weights and thresholds are null until chosen and
-# validated on recorded demo sessions. Nothing below is a validated value.
-# =============================================================================
-
+# Offline deterministic baseline. Prototype values, not calibrated probabilities.
 input:
-  # Maximum allowed timestamp difference (s) between paired packets that share a frame_id.
-  # Used only as a consistency check; frame_id is the primary key.
-  max_timestamp_mismatch_s: null
-  # Allow fusion when the BoundaryOutputPacket for a frame is missing.
+  max_timestamp_mismatch_s: 0.001
   allow_missing_boundary: false
-  # Packets with these statuses are rejected.
   reject_statuses: [error, invalid_input]
-
 evidence:
-  # Minimum per-source confidence for evidence to be used: {source: threshold}
-  min_confidence:
-    object: null
-    gesture: null
-    interaction: null
-    motion: null
-    contact: null
-    boundary: null
-
+  min_confidence: {object: 0.5, gesture: 0.6, interaction: 0.5, motion: 0.5, contact: 0.5, boundary: 0.5}
+  motion_min_speed: 0.02  # rack units / s, not camera-up or metric velocity
+  interaction_priority: [hand_leaving_object, hand_contact_candidate, hand_object_overlap, hand_near_object, object_motion_candidate]
 confidence:
-  method: null              # fusion method, e.g. weighted / rule-based; chosen during implementation
-  weights:
-    object: null
-    gesture: null
-    interaction: null
-    motion: null
-    contact: null
-    boundary: null
-  # Missing evidence is treated as "unknown", not as negative evidence.
+  method: rule_based
+  weights: {object: 0.15, gesture: 0.15, interaction: 0.25, motion: 0.15, contact: 0.15, boundary: 0.30}
   missing_evidence_policy: unknown
-  min_event_confidence: null
-
+  min_event_confidence: 0.55
 conflict_resolution:
-  # Policy when Module 03 and Module 04 disagree, e.g. "prefer_confirmed", "mark_uncertain".
-  policy: null
+  policy: mark_uncertain
   record_conflicts: true
-
 temporal:
-  window_frames: null
-  confirmation_min_hits: null
-  confirmation_window: null
-  # Frames without support before an ongoing activity is considered ended.
-  end_gap_frames: null
-
+  confirmation_min_hits: 3
+  confirmation_window: 5
+  end_gap_frames: 3
+  max_time_gap_s: 1.0
 activities:
-  # Configurable activity label set; must match expected_activity values in procedures/*.yaml.
-  # Placeholders only.
-  labels:
-    - unknown
-    - PLACEHOLDER_ACTIVITY
-    - PLACEHOLDER_ACTIVITY_2
-
+  labels: [unknown, touch_object, move_object, rotate_object, release_object, approach_object]
+  # First matching rule wins; order expresses priority, not procedure order.
+  rules:
+    - name: rotate_with_contact
+      label: rotate_object
+      all: {object: ['*'], boundary: [rotating]}
+      any: {contact: [contact], interaction: [hand_contact_candidate, hand_object_overlap]}
+    - name: move_with_contact
+      label: move_object
+      all: {object: ['*'], motion: [moving]}
+      any: {contact: [contact], interaction: [hand_contact_candidate, hand_object_overlap]}
+    - name: release
+      label: release_object
+      all: {object: ['*']}
+      any: {boundary: [separating], interaction: [hand_leaving_object]}
+    - name: touch
+      label: touch_object
+      all: {object: ['*']}
+      any: {boundary: [contact], contact: [contact], interaction: [hand_contact_candidate, hand_object_overlap]}
+    - name: approach
+      label: approach_object
+      all: {object: ['*'], interaction: [hand_near_object]}
+      any: {}
 output:
   events_dir: outputs/events

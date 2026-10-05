@@ -2,11 +2,14 @@
 
 **AI Human Activity Recognition for On-board BAS Experiments** — Smart India Hackathon prototype.
 
-> **Status: Module 01 foundation and the 01→02→03→04 receiving path are implemented.**
+> **Status: Modules 01–05 have an executable offline baseline and synthetic integration.**
 > Module 01 owns shared contracts and frame preparation. YOLO adapters live in 02;
 > hands, calibration and interaction continuity live in 03. Module 04 now runs
 > local contours and confirmed STATIONARY/MOVING/CONTACT/SEPARATING evidence.
-> Rack-relative rotation, HAR, FSM and the wider application remain incomplete.
+> Module 05 performs configured rule-based HAR with temporal confirmation.
+> Real inference awaits local model assets and a matching class mapping.
+> Rack-relative boundary rotation and the wider application remain incomplete.
+> See [the milestone repair report](MODULES_01_05_REPAIR.md) for commands and evidence.
 > See [perception/INTEGRATION.md](perception/INTEGRATION.md) for the single
 > authoritative boundary and [verification evidence](perception/VERIFICATION.md).
 
@@ -87,6 +90,7 @@ statement** (e.g. `from 02_yolo import ...` is a syntax error).
 - `perception/` implements the Module 01 frame foundation.
 - Import-safe `yolo`, `optimization`, and `boundary` packages locate code inside
   numbered owner directories using package paths, without duplicating implementations.
+  The same stable locators expose `fusion` and the optional `pose_tracking` helper.
 - `shared/` defines all stage packets and observation leaves exactly once.
 - Normal imports beginning with a digit remain invalid; contract tests enforce this.
 
@@ -99,14 +103,15 @@ External Camera / Frame Source -> FramePacket (source preserved)
   -> 03 OptimizationPipeline -> OptimizationOutputPacket
                                (current observations + stable evidence + bounded window)
   -> 04 BoundaryPipeline.process_optimization(packet, source_frame) -> BoundaryOutputPacket
-  -> 05 HAR / Perception Fusion [scaffold] -> ActivityEvent
+  -> 05 FusionPipeline -> ActivityEvent (unknown/current result + confirmed emission flag)
   -> Procedure FSM [implemented; synthetic event demo]
 ```
 
-`integration.chain.PerceptionChain` composes 01–03. The runnable example calls
-Module 04's actual input validator. Module 04's separate runtime and integration
-tests exercise real contour extraction; the example does not yet orchestrate it
-or HAR. Module 04 now confirms supported boundary states; see its
+`integration.chain.PerceptionChain` composes 01–03.
+`integration.milestone.MilestonePipeline` extends it through actual Module 04
+contour processing and Module 05 fusion. The headless runner is
+`scripts/run_fusion.py`; `--synthetic` replaces capture/detector/landmark inference
+while running the real five module interfaces. Module 04 confirms supported boundary states; see its
 [targeted repair report](04_boundary/REPAIR_REPORT.md) for tested behavior.
 
 
@@ -127,7 +132,7 @@ or HAR. Module 04 now confirms supported boundary states; see its
 ```text
 SIH26174/
 ├── README.md, requirements.txt, .gitignore, main.py
-├── configs/               owner configs + demo/mock profiles; boundary/fusion/classes still contain placeholders
+├── configs/               owner configs + baseline fusion rules; classes still need the team's model taxonomy
 ├── shared/                schemas/ (packet contracts), enums/, utils/
 ├── 01_perception_core/    camera/ synchronization/ pipeline/ buffering/ tests/
 ├── 02_yolo/               models/ inference/ preprocessing/ detection/ tracking/ stability/ reference/ output/ tests/
@@ -310,15 +315,14 @@ After installation, the system must run without network access.
 
 ## Running Individual Modules
 
-Run from the repository root. Module 04 has the standalone runner below; some
-other scripts still exit with a non-zero status as placeholders.
+Run from the repository root. Synthetic commands require no camera or model assets.
 
 ```bash
-python scripts/run_camera.py         # Future external capture application
-python scripts/run_yolo.py           # Modules 01-02
-python scripts/run_optimization.py   # Modules 01-03
+python scripts/run_camera.py --synthetic  # capture packets + Module 01 preparation
+python scripts/run_yolo.py -h             # Modules 01-02 local image inference options
+python scripts/run_optimization.py --synthetic  # Module 03 ObjectFrame replay
 python scripts/run_boundary.py --synthetic --frames 5  # standalone Module 04
-python scripts/run_fusion.py         # Modules 01-05
+python scripts/run_fusion.py --synthetic  # genuine Modules 01-05 chain
 ```
 
 ## Running Full Pipeline
@@ -329,7 +333,8 @@ python main.py
 python scripts/run_full_pipeline.py
 ```
 
-Both are placeholders until the modules are implemented.
+These commands demonstrate the existing procedure FSM using scripted events;
+they do not perform perception. Use `run_fusion.py` for the five-module milestone.
 
 ## Testing
 
@@ -340,9 +345,13 @@ python -m pytest
 Run with `python -m pytest` from the repository root so that `shared` is importable.
 
 - `tests/test_packet_contracts.py` contains real checks of the shared contracts and of the
-  numbered-folder import rule. These pass on the scaffold.
+  numbered-folder import rule.
 - `tests/perception/` exercises active core, owner-stage, backend and reviewer regressions.
-- The 120 existing scaffold tests remain skipped; see the verification record for actual counts.
+- Module 05 and the milestone runner have real unit/integration tests.
+- Remaining skips cover unused historical planning interfaces, unsupported optional
+  boundary features and absent real inference assets; see the repair report.
+- `pytest.ini` uses importlib collection and a generated repository-local temp
+  directory (`tests_tmp/pytest`), without IDE PYTHONPATH settings.
 
 ## Offline Requirement
 
@@ -350,8 +359,11 @@ Run with `python -m pytest` from the repository root so that `shared` is importa
 - Models (YOLO, pose, hands) are loaded from local files; a missing file is an error, never a download.
 - Installation is the only step that needs network access.
 - Every module's Definition of Done includes a "runs with networking disabled" check.
-- Disable Ultralytics usage-analytics syncing (`yolo settings sync=False`) and run every module once
-  during setup, so that any first-use asset fetches happen before the offline check.
+- The SIH YOLO wrapper disables its optional semantic worker by default.
+  The separate standalone Qwen demo is outside this milestone and explicitly retains
+  its existing localhost-service behavior. The milestone never invokes it.
+- The detector requires existing local weights, disables Ultralytics auto-install
+  and online checks before importing it, and refuses incompatible pre-imported settings.
 
 ## Microgravity / Rack-Relative Reasoning
 
@@ -376,7 +388,8 @@ are in normalized / rack-relative units unless calibrated depth or stereo is add
 - One camera with a stable view of the operator and the rack/payload area.
 - Ground-based demo setup with normal gravity, simulating an on-board scenario.
 - Laptop/desktop hardware; runtime performance will be measured on that hardware, not assumed.
-- Placeholder object classes, gestures, activities and procedures defined by the team.
+- Baseline activity rules are configured; model-specific object classes and the real
+  experiment procedure still need to be supplied by the team.
 - One operator and one target object at a time.
 - Lighting and backgrounds controlled enough for colour-based segmentation.
 
@@ -392,8 +405,8 @@ are in normalized / rack-relative units unless calibrated depth or stereo is add
 
 ## Known Limitations
 
-- The wider numbered module/application pipeline remains scaffolded. The independent
-  frame foundation and 02/03 adapter/geometry path are implemented; see the verification record.
+- Modules 01–05 have a verified synthetic baseline. GUI/streaming/final application
+  orchestration are outside this milestone.
 - Trained experiment YOLO weights, real-scene evaluation and target-hardware performance evidence are absent.
 - Monocular camera: relative depth only.
 - Colour segmentation is sensitive to lighting.

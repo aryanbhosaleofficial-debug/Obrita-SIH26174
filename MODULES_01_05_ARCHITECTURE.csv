@@ -1,0 +1,363 @@
+path,classification,reason
+01_perception_core/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+01_perception_core/buffering/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+01_perception_core/buffering/frame_buffer.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/buffering/packet_queue.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/camera/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+01_perception_core/camera/camera_capture.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/camera/camera_config.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/camera/frame_reader.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/pipeline/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+01_perception_core/pipeline/health_monitor.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/pipeline/module_manager.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/pipeline/pipeline_manager.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/synchronization/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+01_perception_core/synchronization/frame_id_manager.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/synchronization/frame_sync.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/synchronization/timestamp_manager.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+01_perception_core/tests/test_camera.py,TEST,"Unit, contract, CLI or integration verification"
+01_perception_core/tests/test_frame_sync.py,TEST,"Historical planning test, explicitly skipped"
+01_perception_core/tests/test_pipeline_manager.py,TEST,"Historical planning test, explicitly skipped"
+02_yolo/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/__main__.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/adapters/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/adapters/sih.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/adapters/standalone.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/alerts/audio_cache.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/contracts.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/manager.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/messages.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/piper_tts.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/playback.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/sapi5.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/timing.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/voice_cache.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/alerts/voice_router.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/cli.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/config.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/core/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/core/config.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/core/contracts.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/core/detector.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/core/pipeline.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/core/postprocess.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/detection/__init__.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/detection/bbox_validator.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/detection/detection_filter.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/detection/object_state.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/inference/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/inference/class_map.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/inference/detector.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/inference/postprocess.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/inference/yolo_inference.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/inference/yolo_loader.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/input_validation.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/inputs/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/inputs/opencv_source.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/output/__init__.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/output/object_frame_builder.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/pipeline.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/preprocessing/__init__.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/preprocessing/coordinate_restore.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/preprocessing/letterbox.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/preprocessing/normalize.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/procedure/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/procedure/assistant.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/contracts.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/event_log.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/fast_actions.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/fusion.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/markdown_loader.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/relevance.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/procedure/validator.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/reference/__init__.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/reference/anchor_extractor.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/semantic/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/semantic/contracts.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/semantic/event_trigger.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/semantic/qwen_verifier.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/semantic/temporal_buffer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/semantic/worker.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/stability/__init__.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/stability/detection_stability.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/standalone.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/standalone_cli.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tests/conftest.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_alerts.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_auto_enable.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_coordinate_restore.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_detection.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_extensions.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_object_frame.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_prefreeze.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_procedure.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_procedure_repair.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_tracking.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_voice_backends.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_yolo_backend.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_yolo_cli.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/test_yolo_stage.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/verify_real_offline.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tests/verify_types.py,TEST,"Unit, contract, CLI or integration verification"
+02_yolo/tools/benchmark_alert_latency.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tools/build_voice_cache.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tools/extract_har_model.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tools/inspect_har.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tools/smoke_semantic.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tools/verify_runtime.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/tracking/__init__.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/tracking/object_tracker.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/tracking/track_manager.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/tracking/track_state.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+02_yolo/visualization/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+02_yolo/visualization/procedure_overlay.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+02_yolo/visualization/renderer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/__main__.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/config.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/gesture/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/gesture/gesture_features.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/gesture/gesture_labels.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/gesture/gesture_recognizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/hands/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/hands/hand_detector.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/hands/hand_tracker.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/hands/hand_validator.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/hands/handedness.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/input/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/input/input_synchronizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/input/input_validator.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/interaction/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/interaction/associations.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/interaction/hand_object_distance.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/interaction/interaction_generator.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/interaction/object_association.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/interaction/primitives.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/interaction/proximity.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/landmarks/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/landmarks/landmark_filter.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/landmarks/landmark_smoother.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/landmarks/missing_landmarks.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/landmarks/relative_depth.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/motion/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/motion/acceleration.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/motion/displacement.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/motion/joint_angles.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/motion/motion_direction.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/motion/velocity.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/optimizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/output/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/output/optimization_packet_builder.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/pipeline.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/pose/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/pose/pose_detector.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/pose/pose_tracker.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/pose/pose_types.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/pose/pose_validator.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/quality/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/quality/perception_quality_gate.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/reference_frame/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/reference_frame/coordinate_frame.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/reference_frame/coordinate_transform.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/reference_frame/orientation.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/reference_frame/rack_reference.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/reference_frame/reference_validator.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/roi/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/roi/hand_roi.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/roi/human_roi.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/skeleton/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/skeleton/body_connections.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/skeleton/hand_connections.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/skeleton/skeleton_builder.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/spatial_output/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/spatial_output/spatial_packet_builder.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+03_optimization/standalone_cli.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/temporal/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+03_optimization/temporal/multi_frame_confirmation.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/temporal/sequence_buffer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/temporal/stabilizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/temporal/temporal_filter.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+03_optimization/tests/conftest.py,TEST,"Unit, contract, CLI or integration verification"
+03_optimization/tests/test_cli.py,TEST,"Unit, contract, CLI or integration verification"
+03_optimization/tests/test_gesture.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_hands.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_interaction.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_motion.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_optimization_packet.py,TEST,"Unit, contract, CLI or integration verification"
+03_optimization/tests/test_optimizer.py,TEST,"Unit, contract, CLI or integration verification"
+03_optimization/tests/test_pose.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_pose_helper.py,TEST,"Unit, contract, CLI or integration verification"
+03_optimization/tests/test_reference_frame.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_skeleton.py,TEST,"Historical planning test, explicitly skipped"
+03_optimization/tests/test_validation.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/boundary_pipeline.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/chain_code/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/chain_code/chain_histogram.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/chain_code/chain_normalizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/chain_code/differential_chain.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/chain_code/freeman_chain.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/config.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/contour/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/contour/contour_association.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/contour/contour_extractor.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/contour/contour_resampler.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/contour/contour_validator.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/features/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/features/boundary_orientation.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+04_boundary/features/contact_detector.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/features/geometric_features.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/features/hand_boundary_features.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/fusion/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/fusion/optimization_crosscheck.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+04_boundary/input/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/input/contract_validator.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/input/input_synchronizer.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+04_boundary/input/input_validator.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/input/target_selector.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/output/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/output/boundary_packet_builder.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/preprocessing/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/preprocessing/illumination.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+04_boundary/preprocessing/roi_preprocess.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/quality/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/quality/boundary_quality_gate.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/roi/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/roi/boundary_roi.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/segmentation/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/segmentation/foreground_segmenter.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/segmentation/hsv_segmenter.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+04_boundary/segmentation/mask_cleanup.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/segmentation/segmentation_quality.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/standalone_cli.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/streamlit_app.py,LEGACY,Preserved standalone/application or legacy bridge; outside the milestone runner
+04_boundary/temporal/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+04_boundary/temporal/boundary_change.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/temporal/boundary_tracker.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/temporal/confirmation.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+04_boundary/tests/conftest.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_boundary_cli.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_boundary_config.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_boundary_packet.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_boundary_runtime.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_boundary_tracking.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_chain_code.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_contact.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_contours.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_final_p1.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_recovered_algorithms.py,TEST,"Unit, contract, CLI or integration verification"
+04_boundary/tests/test_segmentation.py,TEST,"Unit, contract, CLI or integration verification"
+05_perception_fusion/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+05_perception_fusion/config.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/evidence/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+05_perception_fusion/evidence/boundary_evidence.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/evidence/contact_evidence.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/evidence/gesture_evidence.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/evidence/interaction_evidence.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/evidence/motion_evidence.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/evidence/object_evidence.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/fusion/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+05_perception_fusion/fusion/confidence_fusion.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/fusion/conflict_resolver.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/fusion/evidence_fusion.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/har/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+05_perception_fusion/har/activity_event_builder.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/har/activity_labels.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/har/activity_recognizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/input/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+05_perception_fusion/input/fusion_synchronizer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/input/packet_validator.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/pipeline.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/temporal/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+05_perception_fusion/temporal/activity_confirmation.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/temporal/evidence_buffer.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+05_perception_fusion/tests/conftest.py,TEST,"Unit, contract, CLI or integration verification"
+05_perception_fusion/tests/test_activity_event.py,TEST,"Unit, contract, CLI or integration verification"
+05_perception_fusion/tests/test_conflict_resolution.py,TEST,"Unit, contract, CLI or integration verification"
+05_perception_fusion/tests/test_evidence_fusion.py,TEST,"Unit, contract, CLI or integration verification"
+boundary/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+fusion/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+integration/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+integration/chain.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/cli.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/configuration.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/legacy.py,LEGACY,Preserved standalone/application or legacy bridge; outside the milestone runner
+integration/marker_scene.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/milestone.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/mocks.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/sources.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/synthetic.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+integration/visualization.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+optimization/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/associations.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/config.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/contracts.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+perception/coordinate_frame.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/core.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+perception/detector.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/hand_tracker.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/integration.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+perception/interaction.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/mocks.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/pipeline.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/pose_tracker.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/preprocessing.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+perception/stabilizer.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/utils.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+perception/visualization.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+pose_tracking/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+scripts/_bootstrap.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+scripts/run_boundary.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+scripts/run_camera.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+scripts/run_full_pipeline.py,LEGACY,Preserved standalone/application or legacy bridge; outside the milestone runner
+scripts/run_fusion.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+scripts/run_optimization.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+scripts/run_yolo.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+shared/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+shared/config.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/diagnostics.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/enums/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+shared/enums/boundary_state.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/enums/interaction_state.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/enums/module_status.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/errors.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/geometry.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+shared/schemas/activity_event.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/boundary_packet.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/frame_packet.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/object_frame.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/observations.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/optimization_packet.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/perception_frame_result.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+shared/schemas/prepared_frame.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/schemas/spatial_feature_packet.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/utils/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"
+shared/utils/geometry.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+shared/utils/logger.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+shared/utils/observation.py,AUTHORITATIVE IMPLEMENTATION,"Concrete implementation, schema, configuration or reusable utility"
+shared/utils/timing.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+shared/utils/validation.py,SCAFFOLD,Inactive historical planning leaf; no competing implementation added
+tests/perception/conftest.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_adapters.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_associations.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_config.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_coordinate_frame.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_integration_break_cases.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_interaction_primitives.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_pipeline.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_preprocessing.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_review_regressions.py,TEST,"Unit, contract, CLI or integration verification"
+tests/perception/test_stabilizer.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_boundary_runtime_integration.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_full_pipeline.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_fusion_integration.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_local_inference_assets.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_optimization_to_boundary.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_packet_contracts.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_procedure_runtime.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_rebase_integration.py,TEST,"Unit, contract, CLI or integration verification"
+tests/test_yolo_to_optimization.py,TEST,"Unit, contract, CLI or integration verification"
+yolo/__init__.py,COMPATIBILITY WRAPPER,"Stable package locator, export or thin launcher; delegates to owner code"

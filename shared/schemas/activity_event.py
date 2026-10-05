@@ -52,3 +52,5 @@ class ActivityEvent:
     # Human-readable description of evidence conflicts that were resolved.
 
     status: ModuleStatus = ModuleStatus.OK
+    metadata: dict = field(default_factory=dict)
+    # Session/source identity, rule, confirmation state and emission flag.

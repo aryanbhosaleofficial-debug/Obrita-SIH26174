@@ -1,71 +1,33 @@
-# Definition of Done — Module 05 Perception Fusion
+# Module 05 baseline completion checklist
 
-## Functional Requirements
+## Implemented and verified
 
-- [ ] `OptimizationOutputPacket` and `BoundaryOutputPacket` are paired by `frame_id` and `target_track_id`.
-- [ ] Object, gesture, interaction, motion, contact and boundary evidence are extracted.
-- [ ] Evidence fusion is implemented using configured weights / rules.
-- [ ] Missing evidence is treated as unknown, not as negative evidence.
-- [ ] Conflicts between Module 03 and Module 04 evidence are resolved by the configured policy and recorded.
-- [ ] Activities are confirmed over time; one continuous activity produces one event.
-- [ ] Activity labels come from the configured label set.
-- [ ] No procedure-order validation is implemented in this module.
+- [x] Existing shared optimization and boundary packets are paired by frame/operator/time.
+- [x] Nested identity/status, confidence and usable target evidence are validated.
+- [x] Current object, confirmed gesture, observed interaction, rack motion,
+      boundary contact and confirmed boundary evidence are extracted.
+- [x] Configured rules/thresholds/weights recognize explainable activities.
+- [x] Missing evidence remains unknown; insufficient evidence returns unknown.
+- [x] Conflict policies record disagreements and suppress or resolve candidates.
+- [x] Frame-keyed N-of-M confirmation avoids single-frame firing.
+- [x] One continuous action emits once; short gaps, target changes and resets are tested.
+- [x] Shared ActivityEvent preserves source/session, frame/time, label, confidence,
+      supporting evidence, conflicts and temporal support range.
+- [x] Fusion does not validate procedure order or modify upstream packets.
+- [x] Activities match the example procedure's configured vocabulary.
+- [x] Unit tests and actual Modules 03/04-to-05 integration tests pass.
+- [x] The full synthetic Modules 01–05 command executes offline with inference fakes.
+- [x] A confirmed event is accepted by the existing procedure FSM.
+- [x] Processing time is measured per call and logged by the runner.
+- [x] README and executable pipeline documentation match the baseline.
 
-## Input Contract
+## Deployment/evaluation work not claimed by this code milestone
 
-- [ ] Accepts `OptimizationOutputPacket` and `BoundaryOutputPacket` from `shared.schemas` only.
-- [ ] Checks `frame_id`, `timestamp_s`, `target_track_id`, `status` and confidence ranges.
-- [ ] Never modifies upstream packets.
+- [ ] Supply actual YOLO weights and matching class taxonomy, plus enabled local landmark models.
+- [ ] Evaluate labelled recorded sessions; tune prototype defaults from those observations.
+- [ ] Measure latency and throughput on the team's target demo hardware.
+- [ ] Team demonstration/review using its real experiment objects and procedure.
 
-## Output Contract
-
-- [ ] Publishes `shared.schemas.activity_event.ActivityEvent` (no local redefinition).
-- [ ] `start_frame_id <= end_frame_id`; timestamps consistent with frames.
-- [ ] `evidence_summary` and `conflicts` are populated.
-- [ ] `activity_label` values match `expected_activity` values used in `procedures/*.yaml`.
-
-## Unit Tests
-
-- [ ] `test_evidence_fusion.py` implemented and passing.
-- [ ] `test_conflict_resolution.py` implemented and passing.
-- [ ] `test_activity_event.py` implemented and passing.
-
-## Integration Tests
-
-- [ ] `tests/test_fusion_integration.py` implemented and passing.
-- [ ] `ActivityEvent`s are accepted by `procedure/step_validator.py`.
-- [ ] `tests/test_packet_contracts.py` passes.
-
-## Error Handling
-
-- [ ] Mismatched packets are never fused.
-- [ ] Packets with rejected statuses or invalid confidences are rejected and logged.
-- [ ] Missing boundary packet is handled per `allow_missing_boundary`.
-- [ ] Insufficient evidence produces no false event.
-
-## Configuration
-
-- [ ] All thresholds, weights and policies come from `configs/fusion.yaml`; none hardcoded.
-- [ ] Chosen values are documented with the recorded sessions they were tuned on.
-
-## Performance Checks
-
-- [ ] Fusion processing time per frame has been measured and documented on the target demo hardware.
-- [ ] Event latency (activity end → event emitted) has been measured and documented on the target demo hardware.
-- [ ] Activity recognition results have been evaluated on a documented, team-labelled set of recorded sessions, and measured results are recorded.
-
-## Offline Operation
-
-- [ ] Module runs with networking disabled.
-
-## Documentation
-
-- [ ] `README.md`, `PIPELINE.md` and this file reflect the implemented behaviour.
-- [ ] Fusion method, conflict policy and activity vocabulary are documented.
-
-## Final Acceptance Criteria
-
-- [ ] On a scripted demo recording, each performed activity yields exactly one `ActivityEvent` with the correct label, verified by the team.
-- [ ] Deliberately conflicting evidence produces a recorded conflict in the event.
-- [ ] Procedure FSM consumes events without schema changes.
-- [ ] Module owner and at least one other teammate have reviewed this checklist.
+Module 04's unsupported rack-relative rotation remains unsupported; no substitute
+camera-axis rotation or microgravity claim is introduced. These empirical and
+deployment gates are distinct from the verified baseline implementation.

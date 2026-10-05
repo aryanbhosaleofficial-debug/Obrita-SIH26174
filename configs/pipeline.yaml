@@ -1,0 +1,5 @@
+# Owner settings are loaded once; CLI local-model paths override these files.
+pipeline:
+  core: perception.yaml
+  yolo: yolo.yaml
+  optimization: optimization.yaml

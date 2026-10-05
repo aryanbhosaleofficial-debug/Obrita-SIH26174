@@ -1,5 +1,10 @@
 # Module 06 model assets
 
+> The checksums below belong to earlier verification records. The Modules 01–05
+> repair audit found neither bundle in this checkout. Real inference is not
+> verified in the current workspace until genuine local assets are supplied.
+> Module 03's optional body helper uses this same configuration and model path.
+
 Local MediaPipe Tasks bundles. They are git-ignored (`*.task`), so install them
 once per machine with network, then run offline. The code never downloads.
 

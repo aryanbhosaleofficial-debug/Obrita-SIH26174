@@ -1,12 +1,17 @@
 # Local hand model assets
 
-Place the compatible MediaPipe Hand Landmarker bundle at
-`models/hand_landmarker.task`, as referenced by `configs/optimization.yaml`.
-Obtain it before offline deployment from the
-[official model page](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker#models).
-The module never downloads a model at runtime. `.task` files are git-ignored.
+The active default in `configs/optimization.yaml` is `models/hand_landmarker.task`.
+Supply the genuine compatible MediaPipe Hand Landmarker Tasks bundle before real
+inference, or pass `--hand-model <local-path>` to `scripts/run_fusion.py`.
+No runtime download is performed; missing enabled assets are startup errors.
 
-A local official bundle was downloaded for adapter smoke verification in this
-workspace. It is not a committed deployment asset. The final experiment object
-YOLO weights still belong in `02_yolo/models/experiment_objects.pt`; see
-`perception/README.md` for configuration and integration.
+The optional body helper uses
+`06_pose_tracking/models/pose_landmarker_lite.task`, configured by the existing
+helper YAML, or `--pose-model <local-path>`. It is disabled by default in the
+milestone. See [helper model setup](../06_pose_tracking/models/README.md).
+
+Earlier reports describe local smoke-tested bundles; those are historical
+verification records, not proof that models are installed in this checkout.
+The repair audit found neither production bundle. Model-free tests inject
+inference backends and are not real inference verification. All `.task` files
+remain Git-ignored.

@@ -1,18 +1,5 @@
-"""
-Activity recognition (HAR).
+"""Deterministic priority selection; insufficient evidence is unknown."""
 
-Implementation status:
-    Scaffold only.
 
-Input:
-    Confirmed fused evidence
-
-Output:
-    Activity label + confidence
-
-Owner:
-    Module 05 — Perception Fusion
-"""
-
-# TODO: Map evidence to labels from activity_labels.py.
-# TODO: Return 'unknown' when evidence is insufficient.
+def recognize(candidates):
+    return candidates[0] if candidates else ("unknown", 0.0, None, {})

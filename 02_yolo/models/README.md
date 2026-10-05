@@ -1,13 +1,29 @@
 # Local Module 02 models
 
-The working `best.pt` is present; the historical `HAR.zip` has been removed. See [MODEL_MANIFEST.md](MODEL_MANIFEST.md) for freshly verified architecture/classes, SHA-256, provenance, Git policy and the verified backup/restore path. Do not run archive extraction unless the original ZIP is available. Runtime does not need that archive.
+The Modules 01–05 project profile (`configs/yolo.yaml`) expects
+`02_yolo/models/experiment_objects.pt`. Supply genuine trained local weights, or
+set `--model <local .pt/.onnx>` in the milestone runner. The single-image YOLO
+command also accepts `--weights`. Paths in YAML resolve relative to that YAML;
+CLI paths resolve relative to the current working directory.
 
-`best.pt` is the local prototype YOLOv8n detection checkpoint extracted explicitly from `../HAR.zip` by `python 02_yolo/tools/extract_har_model.py` (run from the repository root). It is Git-ignored, so distribute it with the standalone directory or supply `--weights` separately. The extraction script verifies the audited size and SHA-256 and does not execute pickle code. Model metadata was inspected statically before subsequent real inference verification.
+The trained model's complete class ID/name mapping must exactly match a local
+classes YAML. The project `configs/classes.yaml` still contains unset IDs because
+the real taxonomy has not been supplied. Complete it from your model's actual
+metadata, or use `--classes <matching-local-yaml>`; do not invent class IDs.
 
-The active HAR class map is `../config/har_classes.yaml`: 0 lid, 1 main_box, 2 red_box, 3 yellow_box. The matching detector profile is `../config/standalone.yaml`. Paths in detector YAML are relative to its directory. Existing `configs/yolo.yaml` remains a separate project profile with its original class expectations; it does not automatically switch models.
+Earlier [MODEL_MANIFEST.md](MODEL_MANIFEST.md) and standalone reports describe a
+historical `best.pt` checkpoint and a four-class profile
+(`02_yolo/config/standalone.yaml`, `har_classes.yaml`). That checkpoint is absent
+in this checkout. No production `.pt`/`.onnx` was found, and the local repository
+ZIP contains no weights. Historical backup paths are not runtime defaults.
+If you restore the genuine checkpoint, select its matching model/profile/classes
+explicitly; do not rename incompatible weights or blend class taxonomies.
 
-`HAR/weights.pt` is a different YOLO26n checkpoint with five classes (HAR, Lid, main_box, red_box, yellow_box). Prototype main.py does not use it. It remains in the archive and is not needed for the default demo. Do not rename it to best.pt or combine its class IDs with the four-class map.
+Runtime requires existing local weights, disables Ultralytics online checks and
+automatic dependency installation, and validates local trackers with ReID off.
+The SIH wrapper disables optional localhost semantic inference by default.
+The separate standalone Qwen/voice demonstration remains outside the milestone.
 
-Runtime never downloads models. Install dependencies and explicitly obtain trusted local weights before offline operation. ONNX is supported by the reviewed adapter when onnxruntime is separately installed. Qwen weights belong to Ollama's local model store, not this directory. Both supplied YOLO checkpoints carry Ultralytics AGPL license metadata.
-
-See [the Module 02 README](../README.md) and [implementation report](../UPDATE_REPORT.md) for setup, verification and limitations.
+Model binaries are Git-ignored. No production asset was fabricated or downloaded
+during this repair. See [milestone repair report](../../MODULES_01_05_REPAIR.md)
+for actual commands, synthetic verification and deployment requirements.

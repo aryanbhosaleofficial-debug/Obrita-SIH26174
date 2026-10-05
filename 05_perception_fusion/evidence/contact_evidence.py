@@ -1,17 +1,5 @@
-"""
-Contact evidence extraction.
+"""Quality-gated positive boundary contact; absence stays unknown."""
 
-Implementation status:
-    Scaffold only.
 
-Input:
-    BoundaryOutputPacket contact fields
-
-Output:
-    Contact evidence item
-
-Owner:
-    Module 05 — Perception Fusion
-"""
-
-# TODO: Combine contact flag with its confidence.
+def extract(packet):
+    return ("contact", packet.contact_confidence) if packet and packet.quality_ok and packet.hand_contact else None

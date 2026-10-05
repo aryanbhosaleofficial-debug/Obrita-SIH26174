@@ -1,17 +1,6 @@
-"""
-Boundary evidence extraction.
+"""Only quality-gated confirmed boundary states are strong evidence."""
+from shared.enums.boundary_state import BoundaryState
 
-Implementation status:
-    Scaffold only.
 
-Input:
-    BoundaryOutputPacket state
-
-Output:
-    Boundary-state evidence item
-
-Owner:
-    Module 05 — Perception Fusion
-"""
-
-# TODO: Use confirmed BoundaryState only as strong evidence.
+def extract(packet):
+    return (packet.boundary_state.value, packet.confidence) if packet and packet.quality_ok and packet.state_confirmed and packet.boundary_state != BoundaryState.UNKNOWN else None

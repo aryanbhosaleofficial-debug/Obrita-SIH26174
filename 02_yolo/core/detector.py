@@ -171,7 +171,8 @@ class UltralyticsYoloDetector:
         path = self.config.model_path
         if path is None or not path.is_file():
             raise InitializationError(
-                f"YOLO model file not found: {path}; supply local trained weights"
+                f"YOLO model file not found: {path}; provide --model <local-model-path> "
+                "(or --weights in the YOLO CLI) or configure model_path"
             )
         if path.suffix.lower() not in (".pt", ".onnx"):
             raise InitializationError(

@@ -1,4 +1,4 @@
-"""Default-on semantics without synchronous inference or detector dependence."""
+"""Standalone semantics remain available; the SIH milestone defaults offline."""
 
 import json
 from dataclasses import replace
@@ -68,7 +68,7 @@ def test_default_startup_checks_local_availability_without_inference(
 
 
 @pytest.mark.parametrize("available", [True, False])
-def test_default_sih_emits_objects_and_semantic_result_without_mutating_frames(
+def test_explicit_sih_semantics_emit_results_without_mutating_frames(
     monkeypatch, backend, prepared, detection, available
 ):
     calls = []
@@ -87,7 +87,7 @@ def test_default_sih_emits_objects_and_semantic_result_without_mutating_frames(
         [replace(detection, bbox=type(detection.bbox)(x, 30, x + 60, 90), track_id=3)]
         for x in (20, 100, 20, 100)
     ]
-    with YoloPipeline(SIHConfig(), backend(rows)) as pipe:
+    with YoloPipeline(SIHConfig(), backend(rows), semantic_config=SemanticConfig(enabled=True)) as pipe:
         wait_status(pipe.semantic, "READY" if available else "OLLAMA_UNAVAILABLE")
         for i in range(4):
             frame = prepared(frame_id=i, timestamp=float(i))
@@ -105,6 +105,14 @@ def test_default_sih_emits_objects_and_semantic_result_without_mutating_frames(
         )
         assert pipe.semantic_result.action == ("PICK_RED" if available else "UNCERTAIN")
         assert ("/api/chat" in calls) is available
+
+
+def test_default_sih_does_not_start_network_worker(backend, prepared):
+    with YoloPipeline(SIHConfig(), backend()) as pipe:
+        assert pipe.semantic.config.enabled is False
+        assert pipe.semantic._thread is None
+        assert pipe.process(prepared()).status == "no_detection"
+        assert pipe.semantic_result is None
 
 
 @pytest.mark.parametrize(
