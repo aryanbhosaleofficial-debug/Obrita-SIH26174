@@ -212,3 +212,169 @@ python 02_yolo/standalone.py --help
 ```
 
 Large .verification dependency caches and historical verification outputs/audit were relocated outside Module 02. New runtime smoke outputs default to a fresh OS temporary directory; set ORBITA_VERIFY_DIR explicitly to preserve them at a chosen location. Type-check temporary copies/caches also stay outside Module 02. If pytest's default temporary directory is inaccessible, use --basetemp with a **new, dedicated temporary path** rather than changing tests or frozen modules.
+
+## Standalone procedure assistant and Piper voice
+
+The optional standalone assistant lives in `yolo.procedure` and `yolo.alerts` for future extraction into the project's FSM/alert modules. DetectorPipeline, SIH adapters, Module 01, Module 03 and ObjectFrame are unchanged. No procedure state or voice fields enter ObjectFrame. Without `--procedure`, the existing detector CLI behaves as before.
+
+```text
+Markdown -> deterministic definition -> ordered validator
+YOLO/track observations -> calibrated demo rules -> consecutive confirmation
+                                             -> validator -> bounded voice queue
+                                                          -> cached Piper PCM -> speaker
+Qwen event results -> separate conservative confirmation/fusion -> future state
+```
+
+### Strict Markdown definition
+
+See `examples/red_yellow_procedure.md`. The first nonempty line must be `# Experiment: NAME`. Consecutive `## Step 1`, `## Step 2`, ... sections each require exactly one of:
+
+```markdown
+# Experiment: Example
+
+## Step 1
+- id: pick_red
+- action: PICK_RED
+- object: red_box
+- instruction: Pick up the red box.
+- warning: Pick up the red box first.
+- confirmation_frames: 3
+- timeout_ms: 5000
+```
+
+`timeout_ms` is optional. Without it there is no time-based omission rule. `object: null` is supported only when the configured actionable taxonomy maps that action to null. NONE/UNCERTAIN are not executable procedure steps. The semantic action-object mapping is the shared allowlist for procedure loading and fusion, not an LLM-generated sequence.
+
+The parser rejects missing/unknown/duplicate fields, duplicate IDs/numbers, nonconsecutive sections, inconsistent action/object pairs, empty instructions/warnings, unknown actions and invalid integers. IDs use lowercase letters/digits/underscores; confirmation_frames is 1..120 and timeout_ms is 1..86400000. Definitions are bounded to 64 steps/64 KiB; instruction/warning strings are bounded to 240 characters. UTF-8 text, including Unicode instructions, is supported. Arbitrary Markdown prose, multiline fields, tables and code fences are intentionally outside this strict format. Invalid definitions fail before opening the input or initializing YOLO.
+
+### Fast action evidence and limitations
+
+Fast rules are **opt-in demo calibration**, supplied using `--fast-config`; there are no default home ROIs. Edit `examples/demo_fast_rules.yaml` for the actual fixed camera/rack. ROI coordinates are normalized **original-source** x1,y1,x2,y2, not prepared-image pixels. Do not use its illustrative coordinates without calibration.
+
+Under the demo assumption that an operator moves these tracked experiment boxes between known home regions and working space:
+
+- Persistent visible track crossing home -> outside produces a PICK candidate.
+- The same visible track returning outside -> home produces a PLACE candidate.
+- MANIPULATE requires a separate `work_regions` ROI for that object, at least `work_dwell_frames` consecutive observations there (default 3), and displacement of at least `displacement_threshold` measured from the work-zone entry anchor. Ordinary carrying outside home is not manipulation evidence. Leaving work, a missing frame or changed identity clears dwell evidence. Step confirmation still applies after the candidate is produced.
+- Candidates require the matched procedure step's number of consecutive detector frames. Missing/gapped frames, boundary jitter and uncertain observations break the streak. A confirmed candidate is latched until a different action or sufficient neutral evidence prevents per-frame repeats.
+
+No raw vertical direction or object disappearance determines PICK/PLACE. Untracked objects, identity changes, duplicate same-class detections and simultaneous candidates are uncertain. Optional `reference_object` rejects missing/moving rack reference evidence; after reference movement, reset/recalibrate the setup. Without a configured home region, fast PICK/PLACE/MANIPULATE remain UNCERTAIN.
+
+These rules detect **supported demo state transitions**, not grasp/release physics. Object motion, occlusion, camera motion and incorrect ROI calibration can invalidate the interpretation. Hand interaction evidence is not supplied by Module 03 to this assistant. Fast physical PICK versus PLACE reliability is not established. A rotated setup requires corresponding ROI calibration; rotation-based ground demonstrations only approximate orientation-agnostic behavior and do not prove real microgravity performance.
+
+### Deterministic sequence and Qwen fusion
+
+A correct confirmed action completes only the current step and suggests the next instruction. Observing a later unfinished step on the same object emits SKIPPED_STEP, identifying intervening steps; observing a later step on a different object emits WRONG_ORDER. Neither advances state. An already-completed action emits REPEATED_ACTION without error speech. The assistant's explicit action relevance filter logs `NON_PROCEDURAL_ACTION` for a taxonomy-valid action on a procedure object when that action/object pair appears nowhere in the loaded procedure. Such incidental actions do not reach confirmation/validation, change state, or generate voice. Thus carrying yellow never requires MANIPULATE_YELLOW in a pick/place-only procedure; another procedure can still require it. Unknown actions, mismatched action/object pairs or unrelated objects remain unexpected when confirmed. NONE/UNCERTAIN never advance state. An explicit timeout emits STEP_TIMEOUT once per expected step, using elapsed high-resolution monotonic host time since that step began (not source-video playback timestamps).
+
+Fast confirmations are accepted immediately without waiting for Qwen. Qwen remains asynchronous and event-triggered, and does not parse Markdown, order steps or control speech. When fast evidence is uncertain, semantic refinement requires `confirmation_frames` distinct chronological READY semantic event results; replaying the same result on successive display frames does not count. This conservative semantic path can be slow. Stale results older than the latest committed action or more than 10 source seconds old are ignored. A later disagreement with a fast result is logged and does not retract state or generate retroactive warnings. No calibrated confidence is claimed.
+
+Upstream reset clears the assistant's classifier/confirmation/fusion, procedure progression, pending voice alerts, cooldown and displayed latency. Active voice playback is canceled and generation tokens prevent stale audio callbacks publishing latency. Prepared/source pixels and downstream ObjectFrame remain clean.
+
+### Local Piper setup and voice policy
+
+The optional backend uses the maintained [Piper Python API](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/API_PYTHON.md), with local ONNX/config assets and bundled English eSpeak phonemization. Other language frontends are rejected in this initial offline backend because some can fetch auxiliary models. Audio uses the installed local sounddevice/PortAudio interface. Install optional dependencies during setup:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r 02_yolo/requirements-voice.txt
+# Explicit, optional setup download only; this command is NEVER run by Module 02:
+.\.venv\Scripts\python.exe -m piper.download_voices en_US-lessac-medium
+```
+
+Keep both `en_US-lessac-medium.onnx` and `en_US-lessac-medium.onnx.json` locally. Then:
+
+```powershell
+.\.venv\Scripts\python.exe -m 02_yolo --source demo.mp4 --procedure 02_yolo/examples/red_yellow_procedure.md --fast-config 02_yolo/examples/demo_fast_rules.yaml --piper-model C:/orbita-assets/en_US-lessac-medium.onnx --events-jsonl procedure-events.jsonl
+.\.venv\Scripts\python.exe -m 02_yolo --source 0 --procedure 02_yolo/examples/red_yellow_procedure.md --no-voice
+```
+
+`--voice`/`--no-voice` controls the procedure voice branch. Voice is enabled by default in procedure mode; backend selection is described in the next section. If no local backend can speak, voice becomes VOICE_UNAVAILABLE; detector, tracking, validator, video and logs continue. VOICE_ERROR isolates synthesis/playback failures. There is no runtime installation, model download or daemon spawning. Dependency/model setup can use the internet explicitly; normal operation needs only local assets and optional localhost Ollama.
+
+One voice worker loads the model once and pre-synthesizes deduplicated procedure warnings, next-step prompts and optional success/completion phrases. Warm-up produces no unsolicited test speech. Wait for VOICE READY before beginning a timed demo. PCM is held in a procedure-scoped cache (default maximum 512 entries/64 MiB; individual clips <=20 seconds). No temporary audio files are created. Reset retains the warmed voice/cache; close releases them. Critical clips remain cached; uncached dynamic messages are synthesized on the worker and logged separately.
+
+Errors have priority 1, timeouts 2, next prompts 3 and optional success acknowledgements 4. Errors supersede queued lower-priority information and can cancel an active lower-priority prompt. The queue is bounded to eight pending alerts; duplicates coalesce, and a full queue rejects a new alert unless it can displace lower-priority speech. Keyed cooldown defaults to 2500 ms (`--alert-cooldown-ms`). Policy defaults: errors ON, next-step prompts ON, success OFF. Use `--no-speak-next-step` or `--speak-success` as needed. Audio-device selection is available via `--audio-device INDEX`.
+
+### Multi-backend offline voice (cached WAV / SAPI5 / Piper)
+
+Voice is a side effect of validated procedure events. `AlertManager` talks to one TTS boundary (`load`/`synthesize`/`close`); `alerts.voice_router.VoiceRouter` puts three local backends behind it. The validator, fast classifier, YOLO and Qwen never see which backend spoke, and every backend's PCM goes through the same bounded worker, priority/preemption, cooldown and PortAudio onset timing.
+
+```text
+ProcedureValidator -> AlertManager -> VoiceRouter (startup probe, fixed order)
+                                       |-- cached_wav : verified pre-generated WAV, playback only
+                                       |-- sapi5      : installed Windows voice -> in-memory PCM
+                                       '-- piper      : local Piper ONNX voice (runtime synthesis)
+```
+
+| Backend | What runs at alert time | Platform | Network |
+|---|---|---|---|
+| `cached_wav` | WAV lookup only (no synthesis) | any | none |
+| `sapi5` | Windows SAPI5 renders to an `SpMemoryStream` (text spoken literally, not as SAPI XML); leading/trailing silence trimmed | Windows; needs pure-Python `comtypes` | none (OS voices David/Zira verified) |
+| `piper` | Piper ONNX synthesis; native eSpeak phonemizer | Linux, or Windows where the policy admits `espeakbridge.pyd` | none |
+
+`--voice-backend auto` (default) probes each configured backend **once** at startup; a backend that fails its probe is never retried per alert. Order is deterministic:
+
+- Windows: `cached_wav` -> `sapi5` -> `piper`.
+- Other platforms: `piper` -> `cached_wav` -> `sapi5`.
+
+Each message uses the first ready backend that can voice it. A message missing from the cache (for example a next-step prompt) falls to SAPI5 for that message only. All fixed procedure messages are still pre-rendered into memory during warm-up, critical warnings first, so a critical warning is a memory lookup whichever backend produced it. Messages no backend can voice are skipped individually and logged (`voice_preload_miss`).
+
+An explicit `--voice-backend cached_wav|sapi5|piper` never falls back. If it is unavailable, voice reports VOICE_UNAVAILABLE with `requested voice backend ... unavailable` and the reason. A Piper eSpeak bridge refused by Windows Application Control is reported as `BLOCKED_POLICY` (not retried).
+
+Startup status, the HUD line (`Fixed: CACHED_WAV 21 | Dynamic: SAPI5 | PIPER: BLOCKED_POLICY`) and `--jsonl` `voice_backends` report the probe result per backend, the dynamic backend, and how many fixed messages each backend produced. Every `audio_playback_started` event records `voice_backend`. Piper is never shown as ready unless its phonemizer probe passed.
+
+**Pre-generated cache.** Build the cache wherever a backend works, typically Piper on an approved Linux machine, then copy the folder to the demo PC:
+
+```powershell
+python 02_yolo/tools/build_voice_cache.py --procedure 02_yolo/examples/red_yellow_procedure.md --backend piper --piper-model <voice>.onnx --output voice_cache/
+python -m 02_yolo --source 0 --procedure 02_yolo/examples/red_yellow_procedure.md --fast-config 02_yolo/examples/demo_fast_rules.yaml --voice-cache voice_cache/manifest.json
+```
+
+`manifest.json` (`orbita-voice-cache/1`) records the experiment name and the generator backend/voice (and Piper voice SHA-256). Entries are keyed by `step_id/KIND` (for example `manipulate_red/SKIPPED_STEP`, `_procedure/COMPLETED`), each with the exact text, a WAV file name and the file's SHA-256. File names are not the contract.
+
+At startup every entry is verified:
+- the key belongs to the loaded procedure;
+- the text equals what that procedure would speak now (stale wording is rejected);
+- the file is a plain local `.wav` name;
+- the SHA-256 matches;
+- the audio is audible PCM16, 8–96 kHz, at most 20 s.
+
+A bad or missing entry is rejected individually and its message falls back. A manifest for another experiment, with duplicate keys or a wrong format, is rejected as a whole. `--backend sapi5` is also supported by the builder, and its manifest says so. The cache folder is a deployment asset: it is not committed in this repository.
+
+Honest scope: on Windows, critical warnings can use **Piper-generated audio** from the cache. Runtime Piper synthesis on Windows depends on Smart App Control admitting the unsigned `espeakbridge.pyd`; the startup probe decides this per run, so the same command works when it is blocked.
+
+Setup: `comtypes` (pure Python, no native binaries) is in `requirements-voice.txt` for Windows. `--sapi-voice` selects an installed SAPI5 voice by name substring.
+
+### HUD, logs and warning latency
+
+Procedure mode appends a fixed 196-pixel display panel below the source-sized annotated frame. The source area and box coordinates are unchanged, and video dimensions remain stable across status updates. It shows step/expected/observed/next instruction, VOICE status and a latency value only after an audio-start callback. `--jsonl` retains per-frame detector/semantic records and adds procedure/voice side outputs only in procedure mode. `--events-jsonl` records bounded-state assistant events and voice instrumentation; in-memory event history is capped at 128 records.
+
+Warning latency is T1 minus T0: T0 is `time.perf_counter()` **after multi-frame violation confirmation**, before validation/queueing; T1 is first non-silent audio output onset. Confirmation, scheduling and playback share the injectable `alerts.timing.host_time` basis. Records include violation_confirmed_timestamp, alert_queued_timestamp, audio_playback_start_timestamp and warning_start_latency_ms. Playback takes the relative [PortAudio outputBufferDacTime](https://python-sounddevice.readthedocs.io/en/latest/api/streams.html) minus PortAudio currentTime, adds it to host perf_counter in the callback, and adjusts for leading PCM silence. Absolute device and host timestamps are never subtracted. This is a device-clock onset **estimate**, not acoustic microphone/speaker verification. Queue insertion alone is never reported as audio start.
+
+Preferred design target is <=1000 ms; maximum target <=1500 ms. It applies only to calibrated, supported fast-path violations, and includes queue/preemption/cache/device delay. `--fast-config` with home ROIs and work ROIs for required manipulation actions is needed for that path. Startup prints/logs per-action YES/NO coverage; missing/partial calibration warns that Qwen-dependent warnings may exceed 1.5 s. Home-only legacy files still support PICK/PLACE but cannot confirm MANIPULATE. ROI coordinates must be normalized, have usable interiors after the boundary margin, and an object's home/work interiors must not overlap. Object names must match the action configuration. Calibration coverage describes structural support, not measured action accuracy.
+
+Measured on the development machine (Windows 11, Realtek speakers via MME, Smart App Control ON) on 2026-10-05. These are injected confirmed violations through the real validator and alert manager, with real audio output, using the PortAudio device-clock onset estimate. They are not acoustically verified.
+
+| Path (warning-start latency) | n | min | median | p95 | max |
+|---|---|---|---|---|---|
+| Cached Piper WAV, warm | 10 | 344 ms | 345 ms | 355 ms | 357 ms |
+| Cached Piper WAV, cold (fresh assistant, warning during warm-up) | 3 | 351 ms | 360 ms | 420 ms | 427 ms |
+| SAPI5 dynamic (synthesized at alert time) | 10 | 319 ms | 324 ms | 330 ms | 333 ms |
+| Runtime Piper, warm (pre-rendered) | 10 | 348 ms | 350 ms | 355 ms | 355 ms |
+| Runtime Piper, dynamic | 3 | 423 ms | 435 ms | 440 ms | 441 ms |
+| Runtime Piper, cold (model load + warm-up first) | 3 | 3022 ms | 3047 ms | 3219 ms | 3238 ms |
+
+The cold runtime-Piper row misses the 1.5 s target. That is why critical warnings should use the cached WAV path and timed demos should wait for VOICE READY.
+
+Smart App Control blocked Piper's unsigned `espeakbridge.pyd` earlier the same day (Code Integrity 3033/3077, `VerifiedAndReputableDesktop`). Later, the identical file (same SHA-256) loaded with SAC still enforcing, consistent with a changed cloud reputation verdict; no security setting was changed. That verdict is outside the project's control and may differ on another PC; the startup probe reports `BLOCKED_POLICY` and `auto` continues with the cache/SAPI5. See [PIPER_POLICY_OWNER_REPORT.md](PIPER_POLICY_OWNER_REPORT.md) and [REAL_PIPER_RUNTIME_REPORT.md](REAL_PIPER_RUNTIME_REPORT.md) for the earlier blocked-state evidence. Unit-test/mock timings are not a real latency result.
+
+```powershell
+# Cached WAV / SAPI5 variants (same tool; results record voice_backend):
+.\.venv\Scripts\python.exe 02_yolo/tools/benchmark_alert_latency.py --voice-backend cached_wav --voice-cache voice_cache/manifest.json --samples 10 --cold-samples 3 --dynamic-samples 0
+.\.venv\Scripts\python.exe 02_yolo/tools/benchmark_alert_latency.py --voice-backend sapi5 --samples 1 --cold-samples 0 --dynamic-samples 10
+# Speak one short readiness phrase, only when explicitly invoked:
+.\.venv\Scripts\python.exe 02_yolo/tools/benchmark_alert_latency.py --piper-model C:/orbita-assets/en_US-lessac-medium.onnx --smoke-only
+# Inject actions through the validator and measure real Piper/device onset:
+.\.venv\Scripts\python.exe 02_yolo/tools/benchmark_alert_latency.py --piper-model C:/orbita-assets/en_US-lessac-medium.onnx --samples 10 --cold-samples 3 --dynamic-samples 3 --jsonl C:/orbita-scratch/latency.jsonl
+```
+
+The benchmark reports separate cold, warm cached and dynamic uncached counts/minimum/median/p95/maximum. Each warning starts with a confirmed injected action, runs through the actual validator and alert manager, and uses Piper-produced PCM. Cold samples include voice/cache warm-up; dynamic samples deliberately clear cached PCM to exercise synthesis. It never labels these events real camera detections. Inspect/listen on the actual demo machine; acoustic verification requires external recording/measurement. Missing assets, policy blocks or devices return NOT VERIFIED with the actual failure and no fabricated timing values. Reset cancels old playback, clears its active duplicate key and accepts the same new-generation prompt while discarding stale callbacks.
+
+This remains a hackathon prototype: not flight-certified, not safety-certified, microgravity unverified. Real operator footage, physical webcam, rotation demo and fast-action accuracy remain unverified; warning latency above is a device-clock estimate, not an acoustic measurement. Run the existing Module 02/full pytest suites, Ruff, compileall and `python -m yolo.tests.verify_types`; the type verifier includes the new procedure/alerts packages.

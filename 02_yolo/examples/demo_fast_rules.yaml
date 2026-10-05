@@ -1,0 +1,16 @@
+# Example calibration only: replace these source-normalized home ROIs for your
+# fixed camera/rack. No ROI file means no supported fast PICK/PLACE evidence.
+fast:
+  home_regions:
+    red_box: [0.10, 0.30, 0.40, 0.75]
+    yellow_box: [0.60, 0.30, 0.90, 0.75]
+  displacement_threshold: 0.03
+  # Manipulation requires dwell AND displacement inside this calibrated zone.
+  # Yellow carrying is not a manipulation step in the sample procedure.
+  work_regions:
+    red_box: [0.45, 0.10, 0.85, 0.28]
+  work_dwell_frames: 3
+  boundary_margin: 0.01
+  # Set to a visible, persistent rack/reference class if available.
+  reference_object: null
+  reference_tolerance: 0.01

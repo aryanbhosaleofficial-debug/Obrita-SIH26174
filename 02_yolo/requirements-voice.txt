@@ -1,0 +1,4 @@
+# Optional setup only. Runtime never installs packages or downloads a voice.
+piper-tts>=1.4,<2
+sounddevice>=0.5,<1
+comtypes>=1.4,<2; sys_platform == "win32"  # pure-Python COM for local SAPI5 speech

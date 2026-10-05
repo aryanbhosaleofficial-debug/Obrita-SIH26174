@@ -1,6 +1,7 @@
 """Model-free Module 02 fixtures; production code never imports these mocks."""
 
 import socket
+import sys
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -23,6 +24,24 @@ def reject_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", reject)
     monkeypatch.setattr(socket.socket, "sendto", reject)
     monkeypatch.setattr(socket, "getaddrinfo", reject)
+
+
+@pytest.fixture(autouse=True)
+def no_real_speech(monkeypatch):
+    """Tests never reach a speaker or the OS speech engine unless they inject fakes."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("Module 02 tests must not open a real audio device")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sounddevice",
+        SimpleNamespace(
+            RawOutputStream=refuse, CallbackAbort=Exception, CallbackStop=Exception
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "comtypes", None)  # import -> ImportError
+    monkeypatch.setitem(sys.modules, "comtypes.client", None)
 
 
 class ScriptedDetector:
