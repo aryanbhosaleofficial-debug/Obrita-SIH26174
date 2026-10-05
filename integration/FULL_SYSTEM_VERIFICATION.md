@@ -1,12 +1,64 @@
 # Full-system verification — 2026-10-05
 
-## Repository baseline
+## Committed-source reproducibility verification
+
+The integration implementation is committed in `b26876b61d567d94724057f3d6640d3ed77442ee`
+(`Final Integration`) on branch `v1`. That commit contains all 22 integration
+source/config/test/documentation/compatibility files. The FSM and shared event
+contracts were already committed in `1127317`. At the start of this follow-up,
+the working tree and index were clean; there was no required untracked source.
+
+Fresh verification used the installed Python environment and a separate detached
+Git worktree in a temporary directory whose path contains spaces. No ignored
+models, generated outputs, virtual environment, or optional positive inference
+samples were copied into that worktree.
+
+| Check | Actual result |
+|---|---|
+| Original workspace: `python -m pytest -q` | 1116 passed, 44 skipped, 0 failed, 0 errors (33.46 s). |
+| Clean implementation HEAD: `python -m pytest -q` | 1109 passed, 47 skipped, 0 failed, 0 errors (30.76 s). |
+| Clean HEAD: `python scripts/run_full_pipeline.py --synthetic --no-gui` | Exit 0; 72 frames; four steps completed; clean shutdown. |
+| Original workspace and clean HEAD: `python scripts/verify_full_system_offline.py --synthetic --scenario recovery --no-gui --record` | Exit 0; recovery entered and resolved; four steps completed; 72 recorded frames; zero recording drops; no guarded outbound connection attempted. |
+| Clean HEAD imports and runner `--help` | Exit 0; integration/runtime/procedure imports and CLI help work. |
+| GUI/voice/streaming/scenario integration tests | Included in both passing full suites; offscreen Qt worker, snapshots, warning dedupe, optional-output failures and loopback stream shutdown exercised. |
+
+The clean suite has different counts because local model assets are deliberately
+absent: five Module 06 real-model cases are replaced by one module-level skip,
+and two standalone real pose/hand cases skip. YOLO remains absent in both trees.
+This is an external-asset limitation, not an integration regression. Synthetic
+mode executes inference substitutes; it is not real AI inference.
+
+The fresh original-workspace recovery log contains 15 timestamped, session-bound
+records, including guidance and recovery transitions. Its recording was reopened
+and all 72 frames decoded; the identity sidecar also has 72 records. Generated
+logs/videos/screenshots and local model files are ignored and preserved locally.
+Existing tracked historical fixtures/media are unchanged.
+
+**Voice integration verified by tests.** This follow-up did not manually verify
+audible hardware playback. Historical device scheduling evidence below must not
+be described as a listener assessment. Real full-system performance was not
+measured during this reproducibility task.
+
+The only follow-up changes are documentation (category D): this report and the
+clean-checkout instructions in `FULL_SYSTEM.md`. No pipeline/module/FSM code,
+configs, dependencies or tests were redesigned. No unrelated user work changed.
+The final documentation commit is rechecked from the detached worktree after
+commit; its hash and actual final test results are reported to the requester.
+
+There are no source reproducibility blockers in the verified implementation
+HEAD. Missing real experiment weights/camera validation remain deployment/demo
+limitations, not blockers for the requested integration freeze review. This is
+a hackathon prototype, not flight-certified spacecraft software.
+
+## Historical implementation baseline
 
 Branch: `v1`. HEAD: `1127317` (Procedure FSM + Recovery / Guidance Integration),
 also referenced by `origin/v1`, `origin/main` and local `main` at inspection.
 Initial `git status --short` and staged diff were empty. Procedure/FSM/recovery,
 Modules 01–06 and GUI source/tests were committed. Their owners were not broadly
-refactored. New integration changes remain unstaged for review; no commit/push.
+refactored. At that original inspection, integration changes were unstaged for
+review. They were subsequently committed in `b26876b`; the status below records
+the original implementation task rather than the current checkout.
 
 Python 3.14.7 on Windows/PowerShell. Observed package versions are recorded in
 `requirements-full-system.txt`. No package installation or model download was
@@ -136,20 +188,21 @@ correction or shared event schema was changed.
 - Generated videos/logs/screenshots: retained in ignored output directories;
   no generated source artifacts staged.
 
-Final status is seven modified tracked files and fifteen untracked source/test/
+Historical pre-commit status was seven modified tracked files and fifteen untracked source/test/
 documentation files. Staged diff is empty. `git diff --check` passes. Windows
 LF/CRLF normalization notices are informational. `.gitignore` already covers
 the runtime output locations, so no ignore-file change was necessary. Existing
 tracked root media and historical fixtures were preserved.
 
-## Acceptance still pending
+## Physical demonstration still pending
 
 The software integration and synthetic full-system demonstration are ready for
 review. Full live acceptance remains blocked by absent trained experiment YOLO
 weights, placeholder class IDs, and unvalidated red/yellow pick/place semantics.
 The optional demo proxy maps contact/departure and does not prove lifting or
 target placement. Physical camera open/close behavior and real experiment
-recognition must be demonstrated before freezing the entire live system.
+recognition remain required for physical live-demo acceptance. They do not block
+the committed-source/synthetic integration freeze review requested in this task.
 
 Known nonblocking issues: duplicate hand inference in 03/06, fixed-FPS recording
 playback versus wall time, unauthenticated trusted-LAN streaming, bounded/drop

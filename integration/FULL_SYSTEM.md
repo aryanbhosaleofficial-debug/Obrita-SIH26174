@@ -298,13 +298,43 @@ python -m pytest -q
 
 See `FULL_SYSTEM_VERIFICATION.md` for exact executed results and artifact paths.
 
+### Verify a clean committed checkout
+
+Use the same installed dependency environment, but do not copy ignored models or
+runtime artifacts into the checkout. In PowerShell, from the repository root:
+
+```powershell
+$cleanCheckout = Join-Path ([System.IO.Path]::GetTempPath()) ('SIH26174 clean HEAD ' + [guid]::NewGuid().ToString('N'))
+git worktree add --detach "$cleanCheckout" HEAD
+Push-Location "$cleanCheckout"
+try {
+    python -m pytest -q
+    python -c "import integration, integration.full_system, procedure; print('imports OK')"
+    python scripts/run_full_pipeline.py --help
+    python scripts/run_full_pipeline.py --synthetic --no-gui
+    python scripts/verify_full_system_offline.py --synthetic --scenario recovery --no-gui --record
+} finally {
+    Pop-Location
+}
+```
+
+Check each command's exit code; do not infer success from the final command alone.
+Retain the worktree for review. Optional real-model tests will skip when local
+assets are absent; the synthetic pipeline requires committed source/configs and
+installed dependencies only. Offscreen GUI execution is covered by
+`tests/test_full_system_cli.py::test_full_gui_offscreen_updates_and_worker_exits`.
+Voice integration is verified by tests; manually audible hardware playback is a
+separate physical-demo check. The offline guard tests Python connection calls,
+not a disconnected network adapter or every native-library path.
+
 - [ ] Disconnect internet for the physical SIH demo.
 - [ ] Copy local trained YOLO weights and complete their class mapping.
 - [ ] Copy local MediaPipe/voice assets and verify dependencies.
 - [ ] Confirm the physical camera opens and calibrated rack markers are visible.
 - [ ] Demonstrate the reviewed procedure with real recognition.
 - [x] Demonstrate correct, wrong-order, skipped and recovery logic synthetically.
-- [x] Demonstrate offline SAPI5 playback starts and warning dispatch.
+- [x] Verify offline voice integration, warning dedupe and worker shutdown in tests.
+- [ ] Manually hear and verify voice guidance on the physical demo audio device.
 - [x] Confirm JSONL logs and decodable recorded video are generated.
 - [x] Verify the GUI reflects guidance/state using the real bridge.
 - [x] Verify generated 0/90/180-degree orientation invariants.
