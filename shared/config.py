@@ -88,6 +88,45 @@ class StabilizationConfig:
     matching_iou_threshold: float = 0.3
     hand_matching_distance: float = 0.1
     max_time_gap_s: float = 1.0
+    min_detection_confidence: float = 0.5
+    history_size: int = 12
+    confidence_aggregation: str = "ema"
+    max_detections_per_frame: int = 256
+
+    def validate(self) -> None:
+        """Also used by the image-free Module 03 entry point."""
+        for name, minimum in (
+            ("detection_min_frames", 1),
+            ("interaction_min_frames", 1),
+            ("max_missing_frames", 0),
+            ("history_size", 1),
+            ("max_detections_per_frame", 1),
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < minimum:
+                raise ConfigurationError(f"{name} must be an integer >= {minimum}")
+        if self.history_size < self.detection_min_frames:
+            raise ConfigurationError("history_size must be >= detection_min_frames")
+        for name, upper, positive in (
+            ("min_detection_confidence", 1, False),
+            ("matching_iou_threshold", 1, True),
+            ("ema_alpha", 1, True),
+            ("hand_matching_distance", 1, True),
+            ("max_time_gap_s", float("inf"), True),
+        ):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not 0 <= value <= upper
+                or (positive and value == 0)
+            ):
+                raise ConfigurationError(f"invalid {name}: {value!r}")
+        if self.confidence_aggregation != "ema":
+            raise ConfigurationError(
+                "confidence_aggregation currently supports only 'ema'"
+            )
 
 
 @dataclass
@@ -147,6 +186,7 @@ class PipelineConfig:
             self.interaction,
             self.stabilization,
         )
+        s.validate()
         if d.backend not in ("ultralytics", "mock", "none"):
             raise ConfigurationError("unsupported detector backend")
         if h.backend not in ("mediapipe", "mock", "none"):
@@ -165,10 +205,8 @@ class PipelineConfig:
             ("min_detection_confidence", h.min_detection_confidence),
             ("min_presence_confidence", h.min_presence_confidence),
             ("min_tracking_confidence", h.min_tracking_confidence),
-            ("matching_iou_threshold", s.matching_iou_threshold),
         ):
             number(name, value, 0, 1)
-        number("ema_alpha", s.ema_alpha, 0, 1, True)
         for thresholds in (i.rack_relative, i.image_diagonal):
             for name in (
                 "proximity_threshold",
@@ -202,11 +240,6 @@ class PipelineConfig:
             raise ConfigurationError(
                 "marker_ids must contain four distinct nonnegative IDs in physical rack order"
             )
-        number("hand_matching_distance", s.hand_matching_distance, 0, 1, True)
-        number("max_time_gap_s", s.max_time_gap_s, 0, float("inf"), True)
-        for name in ("detection_min_frames", "interaction_min_frames"):
-            integer(name, getattr(s, name), 1)
-        integer("max_missing_frames", s.max_missing_frames, 0)
         integer("max_hands", h.max_hands, 1)
         if self.preprocessing.max_width is not None:
             integer("max_width", self.preprocessing.max_width, 1)
