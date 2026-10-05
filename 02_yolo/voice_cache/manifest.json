@@ -1,0 +1,142 @@
+{
+  "format": "orbita-voice-cache/1",
+  "experiment": "Red Yellow Box Demo",
+  "generator": {
+    "backend": "sapi5",
+    "voice": "Microsoft David Desktop - English (United States)"
+  },
+  "entries": {
+    "pick_red/SKIPPED_STEP": {
+      "kind": "SKIPPED_STEP",
+      "text": "Step 1 was skipped. Pick up the red box first.",
+      "file": "d47c59c1109422570b1f1aa1.wav",
+      "sha256": "e8d2edfdba5691d23ac25a458c1f3610f7e6e3c27e2fe1bf509431a72a4cac7a"
+    },
+    "pick_red/WRONG_ORDER": {
+      "kind": "WRONG_ORDER",
+      "text": "Wrong order. Pick up the red box.",
+      "file": "6acc4354df60f6caabdd92b1.wav",
+      "sha256": "cfb0bcf810632b15be7339c3c5946c250fa4dc78cf60c4befb3647c12d271b2e"
+    },
+    "pick_red/UNEXPECTED_ACTION": {
+      "kind": "UNEXPECTED_ACTION",
+      "text": "Unexpected action. Pick up the red box.",
+      "file": "6816269a22de7e98158597ed.wav",
+      "sha256": "99eedcae7a94fa8caec1698ef239621b991d3c51565fb56b174a1d85ab4e285a"
+    },
+    "manipulate_red/SKIPPED_STEP": {
+      "kind": "SKIPPED_STEP",
+      "text": "Step 2 was skipped. Manipulate the red box before placing it.",
+      "file": "a15a8a5e54c049e4295368d6.wav",
+      "sha256": "e4f07c87e464e626469ef615f73e6f4c01d0165b99a863f3823e3351e14eb304"
+    },
+    "manipulate_red/WRONG_ORDER": {
+      "kind": "WRONG_ORDER",
+      "text": "Wrong order. Manipulate the red box.",
+      "file": "5f3ba629895954c2acfb8a5f.wav",
+      "sha256": "610dccf6c6fab87676be8e093b9f1f9acefe9dca5c2ffb772f434d39a836b229"
+    },
+    "manipulate_red/UNEXPECTED_ACTION": {
+      "kind": "UNEXPECTED_ACTION",
+      "text": "Unexpected action. Manipulate the red box.",
+      "file": "98e3677d0d793dc53e421841.wav",
+      "sha256": "9a497d0ab91b4adf81a1edeccce2ab95babf0907fcfc6d9a0b955167919ee0e8"
+    },
+    "place_red/SKIPPED_STEP": {
+      "kind": "SKIPPED_STEP",
+      "text": "Step 3 was skipped. Place the red box after manipulating it.",
+      "file": "0d37cd90bd2556cf3ce1c3d8.wav",
+      "sha256": "ea7cdac4ecade74798cacfe5eb716dd52ed2ad41b03974069a007e8c0bc7dd15"
+    },
+    "place_red/WRONG_ORDER": {
+      "kind": "WRONG_ORDER",
+      "text": "Wrong order. Place the red box back.",
+      "file": "2eff86f760d6c05c71d1a787.wav",
+      "sha256": "3293a46558e54bab2100e0bd1ca539dadaa25a5d5f52112927066879e128a31f"
+    },
+    "place_red/UNEXPECTED_ACTION": {
+      "kind": "UNEXPECTED_ACTION",
+      "text": "Unexpected action. Place the red box back.",
+      "file": "392d0208034c851702b53543.wav",
+      "sha256": "6e7acbbf9cc13cc8ff712bd9871d3bbde2c9595d72193d31a2297b21cc143e1a"
+    },
+    "pick_yellow/SKIPPED_STEP": {
+      "kind": "SKIPPED_STEP",
+      "text": "Step 4 was skipped. Complete the red box steps first.",
+      "file": "3d17518ff05bf22132941a6d.wav",
+      "sha256": "0e68283f2c9238624655aca64c3193f5b715ce3fb70af39a403f7e2d00bf629f"
+    },
+    "pick_yellow/WRONG_ORDER": {
+      "kind": "WRONG_ORDER",
+      "text": "Wrong order. Pick up the yellow box.",
+      "file": "5394598641597956cca4223c.wav",
+      "sha256": "7086e03a559f401ac4262158acd3dc7b8cab08dcd55e4c8c82951cab2121b90a"
+    },
+    "pick_yellow/UNEXPECTED_ACTION": {
+      "kind": "UNEXPECTED_ACTION",
+      "text": "Unexpected action. Pick up the yellow box.",
+      "file": "50c41a35aea9242ff13ca087.wav",
+      "sha256": "370b30e2b01eb7809d9666a589e250d2b8f8cea3bea6eaeb9a4daaeccd984151"
+    },
+    "place_yellow/SKIPPED_STEP": {
+      "kind": "SKIPPED_STEP",
+      "text": "Step 5 was skipped. Place the yellow box back.",
+      "file": "1fc260288fc1d05905d3d7ce.wav",
+      "sha256": "9a64714b7eab2296d32b537d6951f8d126d44dfa562f7be948cf3deadd9f550e"
+    },
+    "place_yellow/WRONG_ORDER": {
+      "kind": "WRONG_ORDER",
+      "text": "Wrong order. Place the yellow box back.",
+      "file": "e923778be9e764c7f5e3cc2f.wav",
+      "sha256": "8c916a089c0432e976e8d5ad31df7ec4bc53c3ae913bc9a113a1826a5ad001b5"
+    },
+    "place_yellow/UNEXPECTED_ACTION": {
+      "kind": "UNEXPECTED_ACTION",
+      "text": "Unexpected action. Place the yellow box back.",
+      "file": "8b5779f890466b7b6caf3a33.wav",
+      "sha256": "7e608fef79b7449c2e070e75226c3c373035bdd922f3a2f4704968fdcbd373b6"
+    },
+    "pick_red/NEXT_STEP": {
+      "kind": "NEXT_STEP",
+      "text": "Next step. Pick up the red box.",
+      "file": "438875b6f6f6f6c27f972ab2.wav",
+      "sha256": "4b2b437538859a122d38bc005f398fd313c594853fbb3827ba8af1aa1fe78a1c"
+    },
+    "manipulate_red/NEXT_STEP": {
+      "kind": "NEXT_STEP",
+      "text": "Next step. Manipulate the red box.",
+      "file": "06ec12f771f303e5e75e72e4.wav",
+      "sha256": "ea49aadc217d6812a6abdc161b77fa56451979ea2c4d924e759d742345deedf8"
+    },
+    "place_red/NEXT_STEP": {
+      "kind": "NEXT_STEP",
+      "text": "Next step. Place the red box back.",
+      "file": "5f47857de69cf212fc09c42f.wav",
+      "sha256": "c75c91ead820a46d91c2d959ba8b7794739ddfd70dba4fb533ce10d6d80f0709"
+    },
+    "pick_yellow/NEXT_STEP": {
+      "kind": "NEXT_STEP",
+      "text": "Next step. Pick up the yellow box.",
+      "file": "390b1e8f3d8d3ca7c3fec623.wav",
+      "sha256": "91e4fc65091e2597d6f8672c57e3bad5ef58297166e56812dd2ca47f6d52f69b"
+    },
+    "place_yellow/NEXT_STEP": {
+      "kind": "NEXT_STEP",
+      "text": "Next step. Place the yellow box back.",
+      "file": "3a56a863641753b926aee035.wav",
+      "sha256": "976c61088d526b92e4f0ebd93b5eadbc8a8966acd3576a3c873841104b483bf3"
+    },
+    "_procedure/SUCCESS": {
+      "kind": "SUCCESS",
+      "text": "Correct. Continue.",
+      "file": "bd907f3585f2a1f9cd57c2b8.wav",
+      "sha256": "8d377ba1f773169e7d94277b71f8f4ba3c969b6927a061794502a8ad7dd0ef28"
+    },
+    "_procedure/COMPLETED": {
+      "kind": "COMPLETED",
+      "text": "Procedure complete.",
+      "file": "044d77088bfd29ddaf6c7e8a.wav",
+      "sha256": "e241c37b0f9a5d0fbeb32c26df3da4c91e2b378e8bb6e88e791c544b6a2bb801"
+    }
+  }
+}

@@ -33,7 +33,15 @@ def main() -> int:
     with TemporaryDirectory(prefix="orbita-mypy-source-") as temporary:
         view = Path(temporary)
         source_names = list(ACTIVE_MODULES)
-        for package in ("core", "adapters", "inputs", "semantic", "visualization"):
+        for package in (
+            "core",
+            "adapters",
+            "inputs",
+            "semantic",
+            "visualization",
+            "procedure",
+            "alerts",
+        ):
             source_names.extend(
                 str(path.relative_to(root / "02_yolo"))
                 for path in (root / "02_yolo" / package).rglob("*.py")
