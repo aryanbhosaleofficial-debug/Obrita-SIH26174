@@ -2,13 +2,16 @@
 
 **AI Human Activity Recognition for On-board BAS Experiments** — Smart India Hackathon prototype.
 
-> **Status: Modules 01–05 have an executable offline baseline and synthetic integration.**
+> **Status: a full-system runner now connects Modules 01–06, procedure recovery,
+> GUI, offline voice, logging, recording and optional local streaming.**
 > Module 01 owns shared contracts and frame preparation. YOLO adapters live in 02;
 > hands, calibration and interaction continuity live in 03. Module 04 now runs
 > local contours and confirmed STATIONARY/MOVING/CONTACT/SEPARATING evidence.
 > Module 05 performs configured rule-based HAR with temporal confirmation.
 > Real inference awaits local model assets and a matching class mapping.
-> Rack-relative boundary rotation and the wider application remain incomplete.
+> Synthetic integration and available MediaPipe models are verified. Real YOLO
+> acceptance still requires experiment weights and a completed class map.
+> See [the full-system guide](integration/FULL_SYSTEM.md) for commands and limits.
 > See [the milestone repair report](MODULES_01_05_REPAIR.md) for commands and evidence.
 > See [perception/INTEGRATION.md](perception/INTEGRATION.md) for the single
 > authoritative boundary and [verification evidence](perception/VERIFICATION.md).
@@ -62,7 +65,7 @@ from video and compare it with the expected procedure, without depending on netw
 - A procedure FSM that reports correct / wrong-order / skipped steps.
 - Fully offline runtime.
 
-**Out of scope:** GUI, cloud services, model training pipelines, flight hardware integration.
+**Out of scope:** cloud services, model training pipelines, flight hardware integration.
 
 ## Architecture
 
@@ -76,6 +79,7 @@ other **only** through the shared packet schemas in `shared/schemas/`.
 | 03 | Optimization Sequence | `03_optimization/` | `SpatialFeaturePacket` (internal) → `OptimizationOutputPacket` |
 | 04 | Boundary Detection | `04_boundary/` | `BoundaryOutputPacket` |
 | 05 | Perception Fusion | `05_perception_fusion/` | `ActivityEvent` |
+| 06 | Pose and Hand Tracking | `06_pose_tracking/` | Synchronized `PoseFrame` branch |
 | — | Procedure FSM | `procedure/` | Step outcome + next-step suggestion |
 
 Every module folder contains `README.md` (scope, contracts, ownership), `PIPELINE.md` (stage-by-stage
@@ -328,13 +332,17 @@ python scripts/run_fusion.py --synthetic  # genuine Modules 01-05 chain
 ## Running Full Pipeline
 
 ```bash
-python main.py
-# or
-python scripts/run_full_pipeline.py
+python scripts/run_full_pipeline.py --synthetic --no-gui --record
+python scripts/run_full_pipeline.py --synthetic --scenario recovery --gui --voice --voice-backend sapi5 --action-interval 90 --max-frames 600 --record
 ```
 
-These commands demonstrate the existing procedure FSM using scripted events;
-they do not perform perception. Use `run_fusion.py` for the five-module milestone.
+This is the authoritative full-system runner. Synthetic mode executes real
+processing owners with explicit inference fakes and simulated semantic events.
+Use `--scenario fusion --procedure procedures/fusion_touch_move.yaml` to consume
+the actual Module 05 rules. Live/video mode requires local trained YOLO weights
+and a matching class map. See [the full-system guide](integration/FULL_SYSTEM.md).
+`main.py` delegates to this runner; its no-argument compatibility demo and the
+old positional procedure command remain semantic-only demonstrations.
 
 The deterministic procedure/recovery layer is documented in
 [procedure/README.md](procedure/README.md), including the shared event contract,

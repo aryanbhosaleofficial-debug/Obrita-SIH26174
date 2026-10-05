@@ -88,6 +88,7 @@ class NextStep:
 class Scene:
     """Overlay geometry. `simulated=True` makes the camera widget paint the demo rack scene."""
     simulated: bool = True
+    overlays_rendered: bool = False  # integration frame already contains source-coordinate overlays
     rotation: int = 0                # setup rotation in degrees (demo scene only)
     main_box: Optional[Detection] = None
     objects: list[Detection] = field(default_factory=list)

@@ -72,13 +72,15 @@ class CameraView(QWidget):
             self._draw_frame(p, r)
         else:
             self._draw_sim(p, r)
-        self._draw_overlay(p, r, real)
+        if not self.scene.overlays_rendered:
+            self._draw_overlay(p, r, real)
         self._draw_finish(p, r)
         self._draw_hud(p, r)
 
     def _draw_frame(self, p: QPainter, r: QRectF):
         img = self.frame
-        s = max(r.width() / img.width(), r.height() / img.height())      # cover
+        p.fillRect(r, T.qc("#101418"))
+        s = min(r.width() / img.width(), r.height() / img.height())      # contain; preserve source geometry
         w, h = img.width() * s, img.height() * s
         p.drawImage(QRectF(r.center().x() - w / 2, r.center().y() - h / 2, w, h), img)
 

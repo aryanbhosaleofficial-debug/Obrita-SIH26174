@@ -1,0 +1,14 @@
+# Direct package versions observed in the verification environment (Windows,
+# Python 3.14.7). This is not a complete transitive lock or a CUDA build selection.
+# Install during setup; runtime does not install or download anything.
+numpy==2.5.3
+opencv-contrib-python==5.0.0.93
+PyYAML==6.0.3
+PySide6==6.11.2
+mediapipe==1.0.1
+sounddevice==0.5.6
+comtypes==1.4.17; sys_platform == "win32"
+pytest==8.4.2
+ultralytics==8.4.165
+torch==2.14.0
+lap==0.5.13

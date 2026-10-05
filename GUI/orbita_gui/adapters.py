@@ -28,6 +28,7 @@ def snapshot_from_dict(d: Mapping[str, Any]) -> Snapshot:
     sc = _g(d, "scene") or {}
     scene = Scene(
         simulated=_g(sc, "simulated", False),
+        overlays_rendered=bool(_g(sc, "overlays_rendered", False)),
         rotation=int(_g(sc, "rotation", 0)),
         main_box=_det(_g(sc, "main_box")) if _g(sc, "main_box") else None,
         objects=[_det(o) for o in (_g(sc, "objects", []) or [])],

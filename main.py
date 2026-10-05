@@ -1,28 +1,17 @@
-"""Repository entry point for the procedure pipeline demo."""
+"""Alias for the authoritative full-system launcher; no-argument legacy demo retained."""
 
 from __future__ import annotations
 
-import argparse
 import sys
-from pathlib import Path
 
 from scripts.run_full_pipeline import main as run_pipeline_main
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the demo procedure pipeline.")
-    parser.add_argument("--procedure", default="procedures/demo_experiment.yaml", help="Path to a YAML procedure file.")
-    parser.add_argument("--config-dir", default="configs", help="Directory containing fusion.yaml and classes.yaml.")
-    args = parser.parse_args()
-
-    procedure_path = Path(args.procedure)
-    config_dir = Path(args.config_dir)
-    if not procedure_path.exists():
-        raise FileNotFoundError(f"Procedure file not found: {procedure_path}")
-    if not config_dir.exists():
-        raise FileNotFoundError(f"Config directory not found: {config_dir}")
-
-    return run_pipeline_main([str(procedure_path), str(config_dir)])
+    if sys.argv[1:]:
+        return run_pipeline_main(sys.argv[1:])
+    from integration.full_cli import ROOT
+    return run_pipeline_main([str(ROOT / "procedures/demo_experiment.yaml"), str(ROOT / "configs")])
 
 
 if __name__ == "__main__":

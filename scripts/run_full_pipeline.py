@@ -1,37 +1,28 @@
-"""Historical procedure-demo entry point; delegates to the authoritative event runner.
-
-This command simulates semantic activities. It does not claim camera inference.
-Use scripts/run_fusion.py for the perception milestone and procedure.demo for replay.
-"""
+"""Authoritative full-system launcher; legacy positional procedure demos retained."""
 if __package__:
     from scripts._bootstrap import bootstrap
 else:
     from _bootstrap import bootstrap
 bootstrap()
 
-import argparse
 import sys
-from pathlib import Path
-from procedure.demo import run_demo
-from procedure.procedure_loader import load_procedure
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("procedure", nargs="?", default="procedures/demo_experiment.yaml")
-    parser.add_argument("config_dir", nargs="?", default="configs")
-    args = parser.parse_args(argv)
-    if not Path(args.procedure).is_file():
-        print(f"procedure file not found: {args.procedure}", file=sys.stderr)
-        return 1
-    if not Path(args.config_dir).is_dir():
-        print(f"config directory not found: {args.config_dir}", file=sys.stderr)
-        return 1
-    try:
-        return run_demo(load_procedure(args.procedure, args.config_dir), legacy_output=True)
-    except (OSError, ValueError) as exc:
-        print(f"procedure configuration: {exc}", file=sys.stderr)
-        return 1
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and not arguments[0].startswith("-"):
+        # Historical positional command is a semantic-only compatibility demo.
+        from procedure.demo import run_demo
+        from procedure.procedure_loader import load_procedure
+        from integration.full_cli import ROOT
+        try:
+            config = arguments[1] if len(arguments) > 1 else ROOT / "configs"
+            return run_demo(load_procedure(arguments[0], config), legacy_output=True)
+        except (OSError, ValueError) as exc:
+            print(f"procedure configuration: {exc}", file=sys.stderr)
+            return 1
+    from integration.full_cli import main as full_main
+    return full_main(arguments)
 
 
 if __name__ == "__main__":

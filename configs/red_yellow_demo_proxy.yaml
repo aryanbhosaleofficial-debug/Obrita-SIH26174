@@ -1,0 +1,9 @@
+# OPTIONAL, explicitly selected demonstration proxies. Contact is not proof of
+# picking; hand departure is not proof of placement inside the target area.
+# Do not use this mapping as a validated scientific activity recognizer.
+semantics: demo_proxy
+mappings:
+  - {activity: touch_object, object: red_box, maps_to: pick_red_box}
+  - {activity: release_object, object: red_box, maps_to: place_red_box}
+  - {activity: touch_object, object: yellow_box, maps_to: pick_yellow_box}
+  - {activity: release_object, object: yellow_box, maps_to: place_yellow_box}

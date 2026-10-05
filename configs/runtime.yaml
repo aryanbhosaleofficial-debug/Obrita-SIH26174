@@ -1,0 +1,14 @@
+# Coordinated owner configs; all paths resolve relative to this file.
+runtime:
+  pipeline_config: pipeline.yaml
+  camera_config: camera.yaml
+  boundary_config: boundary.yaml
+  fusion_config: fusion.yaml
+  tracking_config: ../06_pose_tracking/config/pose_tracking.yaml
+  procedure: ../procedures/red_yellow_box.yaml
+  log_dir: ../outputs/events
+  recording_dir: ../outputs/recordings
+  synthetic_frames: 72
+  recording_fps: 30.0
+  stream_host: 127.0.0.1
+  stream_port: 8080
