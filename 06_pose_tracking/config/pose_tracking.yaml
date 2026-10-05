@@ -1,0 +1,19 @@
+# Module 06 — Live Pose & Hand Tracking. Prototype defaults, not tuned or benchmarked.
+# Model paths are relative to THIS file. Models are local files; nothing is downloaded at runtime.
+pose_tracking:
+  body_enabled: true
+  hands_enabled: true
+  pose_model_path: ../models/pose_landmarker_lite.task
+  hand_model_path: ../../models/hand_landmarker.task   # same bundle Module 03 uses
+  max_hands: 2
+  min_pose_detection_confidence: 0.5
+  min_pose_presence_confidence: 0.5
+  min_hand_detection_confidence: 0.5
+  min_hand_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+  input_mirrored: false        # true when frames are flipped (selfie view) before inference
+  swap_handedness: null        # null = follow MediaPipe's mirrored-input convention
+  smoothing_alpha: 0.7         # 1.0 = no extra smoothing on top of MediaPipe's own
+  max_hold_frames: 2           # lost body/hand re-published as held (observed=false)
+  jump_reset_fraction: 0.15
+  max_time_gap_s: 1.0

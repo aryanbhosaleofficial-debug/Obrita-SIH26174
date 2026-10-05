@@ -35,6 +35,8 @@ from shared.schemas.optimization_packet import (
     InteractionCandidate,
     MotionFeatures,
     OptimizationOutputPacket,
+    TemporalDetection,
+    TemporalFrame,
 )
 from shared.schemas.prepared_frame import PreparedFrame
 from shared.schemas.spatial_feature_packet import (
@@ -67,4 +69,6 @@ __all__ = [
     "ReferenceFrameInfo",
     "ReferenceSource",
     "SpatialFeaturePacket",
+    "TemporalDetection",
+    "TemporalFrame",
 ]

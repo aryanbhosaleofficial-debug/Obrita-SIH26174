@@ -17,6 +17,19 @@ python -m examples.perception_demo
 python -m pytest tests/perception -q
 ```
 
+Module 03 now provides confirmed/held object evidence, EMA confidence and bounded
+image-free temporal windows through the existing shared output packet. Its
+standalone replay requires no detector or hand model:
+
+```bash
+python -m optimization.standalone_cli --synthetic
+python -m optimization.standalone_cli --input detections.jsonl
+```
+
+See [Module 03 documentation](03_optimization/README.md) for the authoritative
+temporal API, configuration and tests. Module 04's receiver validates this
+evidence; its boundary algorithms remain team-owned scaffolds.
+
 ## Project Overview
 
 An offline AI perception pipeline that watches an operator performing an experiment procedure,
@@ -77,7 +90,7 @@ External Camera / Frame Source -> FramePacket (source preserved)
   -> 01 FrameProcessor -> PreparedFrame
   -> 02 YoloPipeline -> ObjectFrame
   -> 03 OptimizationPipeline -> OptimizationOutputPacket
-                               (SpatialFeaturePacket + shared observations)
+                               (current observations + stable evidence + bounded window)
   -> 04 boundary input validator -> boundary algorithm [scaffold]
   -> 05 HAR / Perception Fusion [scaffold] -> ActivityEvent
   -> Procedure FSM [scaffold]

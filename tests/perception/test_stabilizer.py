@@ -69,6 +69,9 @@ def test_ambiguous_continuity_does_not_confirm(config, packet, scene):
     d, h = scene
     d[0].track_id = None
     duplicate = deepcopy(d[0])
+    # Exact duplicates are suppressed at admission; two distinct overlapping
+    # boxes must still be treated as ambiguous continuity.
+    duplicate.bbox = BoundingBox(121, 80, 201, 160)
     with scripted(config, [[d[0], duplicate]], [h]) as pipeline:
         results = [pipeline.process(packet(i)) for i in range(10)]
     assert all(not r.interactions for r in results)

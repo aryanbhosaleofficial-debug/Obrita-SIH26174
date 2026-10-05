@@ -10,6 +10,53 @@ Camera / FramePacket -> Module 01 FrameProcessor -> PreparedFrame
 -> Module 04 boundary input validation -> team-owned boundary analysis
 -> Module 05 HAR -> procedure FSM.
 
+Module 03 now exposes `optimization.OptimizationSequence.process(ObjectFrame)`
+for image-free temporal processing. The existing `OptimizationPipeline` remains
+the spatial integration wrapper and composes the same sequence/stabilizer. Both
+publish the same shared `OptimizationOutputPacket`; there is no alternate tracker
+or packet adapter. See [Module 03's implemented contract](../03_optimization/README.md).
+
+## Module 03 temporal evidence contract
+
+`object_frame.detections` and `observations.detections` contain matching filtered
+CURRENT observations, detached from the Module 02 input and enriched with local
+continuity/stability. Raw detector confidence remains available there.
+`stable_detections` contains frozen `TemporalDetection` evidence, with EMA
+confidence and explicit `observed`, missing count, and first/last seen frame/time.
+It includes confirmed states retained during short gaps. Held boxes must never
+be treated as fresh observations or new interaction evidence.
+
+`temporal_window` contains bounded frozen `TemporalFrame` snapshots, with all
+active tentative/confirmed states, source frame/time, upstream status and missing
+count before each processed frame. It owns no source images or packet references.
+Source/session/dimensions are inherited from the containing packet and windows
+clear on context changes. Counts account for raw, filtered and duplicate inputs;
+the current count is `len(packet.object_frame.detections)`. Serialize with
+`dataclasses.asdict`; derived `stable_detection_count` is a convenience property.
+
+Confirmation uses consecutive accepted observations, then tolerates misses up to
+the configured limit. Expiry occurs when that limit is exceeded. Low-confidence
+and lost/predicted tracker boxes age state rather than refresh it. Exact duplicate
+geometry/class/track observations count once; distinct tracker IDs remain distinct.
+Untracked continuity uses conservative class-consistent IoU and restarts on
+ambiguity. Temporal-only code never assigns semantic actions or boundaries.
+
+The owner config's `stabilization` section retains `detection_min_frames`,
+`max_missing_frames`, `ema_alpha`, IoU/time settings and adds confidence floor,
+history size, explicit `ema` aggregation and a per-frame detection limit.
+Invalid contracts raise before state changes; healthy zero-detection frames are
+normal. Explicit reset clears counters as well as histories for deterministic
+replay. Local keys must be scoped to a source/session AND optimizer run; automatic
+time/size discontinuities continue allocating new keys within a run.
+
+Module 04's receiving validator checks the new window/current/stable consistency,
+presence flags, confidence and counts along with existing metadata and geometric
+contracts. It still performs no segmentation. Warm-up/empty/held-only outputs
+are consumable contracts with false quality and explicit reasons. ERROR and
+INVALID_INPUT outputs are unusable. Do not bypass the actual receiver with an
+adapter. `PerceptionChain` serializes stage calls; direct optimizer callers must
+serialize process/reset themselves.
+
 ## Module 01 owns
 
 Frame validation, metadata/order/session checks, copy-safe preprocessing and

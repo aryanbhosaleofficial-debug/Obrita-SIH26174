@@ -29,6 +29,10 @@ interaction:
     ambiguity_margin: 0.008
     trend_speed_threshold: 0.04
 stabilization:
+  min_detection_confidence: 0.5
+  history_size: 12
+  confidence_aggregation: ema
+  max_detections_per_frame: 256
   detection_min_frames: 3
   interaction_min_frames: 4
   max_missing_frames: 2
