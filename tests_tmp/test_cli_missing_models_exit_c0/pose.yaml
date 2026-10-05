@@ -1,0 +1,3 @@
+pose_tracking:
+  pose_model_path: nope/pose.task
+  hand_model_path: nope/hand.task
