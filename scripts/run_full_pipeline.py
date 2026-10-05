@@ -1,73 +1,38 @@
-"""Run the procedure pipeline demo.
+"""Historical procedure-demo entry point; delegates to the authoritative event runner.
 
-This scaffold intentionally does not instantiate the full perception stack yet,
-but it does provide a small, deterministic entry point that validates procedure
-configuration and exercises the FSM. The actual perception modules remain an
-integration task for later work.
+This command simulates semantic activities. It does not claim camera inference.
+Use scripts/run_fusion.py for the perception milestone and procedure.demo for replay.
 """
-
-from __future__ import annotations
+if __package__:
+    from scripts._bootstrap import bootstrap
+else:
+    from _bootstrap import bootstrap
+bootstrap()
 
 import argparse
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from procedure.fsm import ProcedureFSM, StepOutcome
+from procedure.demo import run_demo
 from procedure.procedure_loader import load_procedure
-from shared.schemas.activity_event import ActivityEvent
 
 
-def _build_demo_event(step: dict, index: int) -> ActivityEvent:
-    return ActivityEvent(
-        event_id=f"demo_{index}",
-        activity_label=step["expected_activity"],
-        frame_id=index,
-        timestamp_s=float(index),
-        start_frame_id=index,
-        end_frame_id=index + 1,
-        start_timestamp_s=float(index),
-        end_timestamp_s=float(index + 1),
-        target_object_class=step["target_object"],
-        confidence=1.0,
-    )
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Load and validate a YAML procedure and exercise the FSM.")
-    parser.add_argument("procedure", nargs="?", default="procedures/demo_experiment.yaml", help="Path to a procedure YAML file.")
-    parser.add_argument("config_dir", nargs="?", default="configs", help="Path to the folder containing fusion.yaml and classes.yaml.")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("procedure", nargs="?", default="procedures/demo_experiment.yaml")
+    parser.add_argument("config_dir", nargs="?", default="configs")
     args = parser.parse_args(argv)
-
-    procedure_path = Path(args.procedure)
-    config_dir = Path(args.config_dir)
-
-    if not procedure_path.exists():
-        print(f"procedure file not found: {procedure_path}", file=sys.stderr)
+    if not Path(args.procedure).is_file():
+        print(f"procedure file not found: {args.procedure}", file=sys.stderr)
         return 1
-    if not config_dir.exists():
-        print(f"config directory not found: {config_dir}", file=sys.stderr)
+    if not Path(args.config_dir).is_dir():
+        print(f"config directory not found: {args.config_dir}", file=sys.stderr)
         return 1
-
-    definition = load_procedure(procedure_path, config_dir)
-    fsm = ProcedureFSM(steps=[step.as_dict() for step in definition.steps])
-
-    print(f"Loaded experiment: {definition.experiment_name} ({definition.experiment_id})")
-    for index, step in enumerate(definition.steps, start=1):
-        event = _build_demo_event(step.as_dict(), index)
-        outcome, next_step = fsm.on_event(event)
-        print(f"step {index}: {step.step_id} -> {outcome.value}")
-        if next_step is not None:
-            print(f"  next: {next_step.get('id')} ({next_step.get('description')})")
-
-    if not fsm.completed_steps:
-        print("No procedure steps completed.")
-    else:
-        print(f"Completed steps: {fsm.completed_steps}")
-
-    return 0
+    try:
+        return run_demo(load_procedure(args.procedure, args.config_dir), legacy_output=True)
+    except (OSError, ValueError) as exc:
+        print(f"procedure configuration: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

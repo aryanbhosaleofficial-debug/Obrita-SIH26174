@@ -336,6 +336,20 @@ python scripts/run_full_pipeline.py
 These commands demonstrate the existing procedure FSM using scripted events;
 they do not perform perception. Use `run_fusion.py` for the five-module milestone.
 
+The deterministic procedure/recovery layer is documented in
+[procedure/README.md](procedure/README.md), including the shared event contract,
+session isolation, confirmation, recovery policies, GUI/voice sinks and tests.
+
+```bash
+python -m procedure.demo --procedure red_yellow_box --scenario all
+# Attach the FSM to actual Module 05 outputs with synthetic perception inputs:
+python scripts/run_fusion.py --synthetic --procedure procedures/fusion_touch_move.yaml --output outputs/events/fusion-frames.jsonl --events outputs/events/fusion-events.jsonl --guidance outputs/events/fusion-guidance.jsonl
+```
+
+The red/yellow sequence uses synthetic recognized activities. The touch/move
+configuration uses existing Module 05 labels. Neither is an approved BAS
+experiment procedure or flight-certified procedure-management system.
+
 ## Testing
 
 ```bash

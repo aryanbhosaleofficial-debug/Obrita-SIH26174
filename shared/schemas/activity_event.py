@@ -42,8 +42,8 @@ class ActivityEvent:
     target_object_track_id: Optional[int] = None
     target_object_class: Optional[str] = None
 
-    confidence: float = 0.0
-    # Fused confidence in [0.0, 1.0].
+    confidence: Optional[float] = None
+    # Fused confidence in [0.0, 1.0]; None means unavailable, never assumed 1.0.
 
     evidence_summary: dict[str, float] = field(default_factory=dict)
     # Evidence source name -> contribution, e.g. {"gesture": ..., "contact": ...}.

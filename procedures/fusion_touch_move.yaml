@@ -1,0 +1,18 @@
+# Real Module 05 rule labels, exercised with synthetic pixels/inference fakes.
+# Demonstrates the event connection; this is not an approved BAS experiment.
+experiment:
+  id: fusion_touch_move
+  name: Module 05 Touch and Move Demo
+  version: "1.0"
+vocabulary:
+  activities: [touch_object, move_object]
+  objects: [sample_container]
+steps:
+  - id: touch
+    description: Touch the sample container.
+    expected_activity: touch_object
+    target_object: sample_container
+  - id: move
+    description: Move the sample container.
+    expected_activity: move_object
+    target_object: sample_container

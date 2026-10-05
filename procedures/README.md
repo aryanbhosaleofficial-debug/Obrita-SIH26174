@@ -11,6 +11,8 @@ changing Python files.
 | File | Purpose |
 |------|---------|
 | `demo_experiment.yaml` | **Example only.** Illustrates the schema with placeholder values. It is not a real ISRO/BAS experiment procedure. |
+| `red_yellow_box.yaml` | Four-step inert-box demo, with explicit retry/recovery and event gating. Synthetic semantic events are available through `python -m procedure.demo`. |
+| `fusion_touch_move.yaml` | Touch/move labels produced by the existing Module 05 rules; used for end-to-end synthetic pipeline verification. |
 
 ## Schema
 
@@ -34,3 +36,10 @@ steps:
 - `expected_activity` values must match the ActivityEvent labels produced by Module 05.
 - `target_object` values must match class names in `configs/classes.yaml`.
 - The loader must reject a file that breaks these rules instead of guessing.
+
+An optional inline `vocabulary` can declare demo labels instead of using the two
+global configs. This does not add recognition capabilities to HAR. Optional
+`order`, `alternate_activities`, `timeout_s`, `recovery`, and top-level
+`event_policy` are documented in [the FSM README](../procedure/README.md).
+Timeouts are metadata only. All examples are prototype procedures, not approved
+spacecraft experiment instructions.

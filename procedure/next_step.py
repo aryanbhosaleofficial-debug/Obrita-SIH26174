@@ -12,6 +12,8 @@ from typing import Any, Sequence
 def next_step(current_steps: Sequence[dict[str, Any]], current_index: int) -> dict[str, Any] | None:
     """Return the next pending step from a procedure definition."""
 
+    if type(current_index) is not int or current_index < 0:
+        raise ValueError("current_index must be a nonnegative integer")
     if current_index >= len(current_steps):
         return None
     return dict(current_steps[current_index])
@@ -20,6 +22,8 @@ def next_step(current_steps: Sequence[dict[str, Any]], current_index: int) -> di
 def completion_message(current_steps: Sequence[dict[str, Any]], current_index: int) -> str:
     """Human-readable completion status."""
 
+    if type(current_index) is not int or current_index < 0:
+        raise ValueError("current_index must be a nonnegative integer")
     if current_index >= len(current_steps):
         return "Procedure complete."
     step = next_step(current_steps, current_index)

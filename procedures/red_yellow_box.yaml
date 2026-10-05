@@ -1,0 +1,52 @@
+# Synthetic recognition demo for inert boxes; not an approved BAS procedure.
+experiment:
+  id: red_yellow_box
+  name: Red Yellow Box Experiment
+  version: "1.0"
+
+vocabulary:
+  activities: [pick_red_box, place_red_box, pick_yellow_box, place_yellow_box]
+  objects: [red_box, yellow_box]
+
+event_policy:
+  min_confidence: 0.6
+  confirmation_frames: 3
+  max_gap_s: 1.0
+  require_identity: true
+  allow_missing_confidence: false
+  ignored_actions: [unknown, NONE, UNCERTAIN, idle]
+  alert_cooldown_s: 5.0
+
+steps:
+  - id: step_1
+    order: 1
+    description: Pick up the red box.
+    expected_activity: pick_red_box
+    target_object: red_box
+    recovery:
+      wrong_order: {action: retry_current_step}
+      repeated: {action: ignore}
+  - id: step_2
+    order: 2
+    description: Place the red box in the target area.
+    expected_activity: place_red_box
+    target_object: red_box
+    timeout_s: 30  # Metadata only; does not authorize automatic timeout recovery.
+    recovery:
+      skipped: {action: perform_missing_step}
+      repeated: {action: ignore}
+  - id: step_3
+    order: 3
+    description: Pick up the yellow box.
+    expected_activity: pick_yellow_box
+    target_object: yellow_box
+    recovery:
+      skipped: {action: perform_missing_step}
+      repeated: {action: ignore}
+  - id: step_4
+    order: 4
+    description: Place the yellow box in the target area.
+    expected_activity: place_yellow_box
+    target_object: yellow_box
+    recovery:
+      repeated: {action: ignore}

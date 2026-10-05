@@ -37,12 +37,12 @@ def parser(description):
 def validate_args(args, input_paths):
     if args.max_frames is not None and args.max_frames <= 0:
         raise ValueError("--max-frames must be positive")
-    outputs = [p for p in (args.output, getattr(args, "events", None)) if p is not None]
+    outputs = [p for p in (args.output, getattr(args, "events", None), getattr(args, "guidance", None)) if p is not None]
     protected = {p.resolve() for p in input_paths if p is not None}
     if any(p.resolve() in protected for p in outputs):
         raise ValueError("output paths must differ from input/config/model paths")
     if len(outputs) != len({p.resolve() for p in outputs}):
-        raise ValueError("--output and --events must differ")
+        raise ValueError("--output, --events and --guidance must differ")
 
 
 def source_frames(args, camera_config):
@@ -81,9 +81,17 @@ def main(argv=None):
     args_parser.add_argument("--pose-model", type=Path, help="enable optional body helper using this local .task")
     args_parser.add_argument("--target-object-track-id", type=int)
     args_parser.add_argument("--events", type=Path, help="confirmed events JSONL; default configured events_dir with a unique filename")
+    args_parser.add_argument("--procedure", type=Path, help="optional procedure YAML consuming Module 05 ActivityEvent")
+    args_parser.add_argument("--guidance", type=Path, help="displayable GuidanceDecision JSONL; requires --procedure")
     args = args_parser.parse_args(argv)
     count = events = errors = 0
     try:
+        if args.guidance and not args.procedure:
+            raise ValueError("--guidance requires --procedure")
+        procedure = None
+        if args.procedure:
+            from procedure import ProcedureFSM, ProcedureIntegration, load_procedure
+            procedure = ProcedureIntegration(ProcedureFSM(definition=load_procedure(args.procedure)))
         config = PipelineConfig.from_yaml(args.config)
         camera_config = load_camera_config(args.camera_config)
         if args.model:
@@ -108,7 +116,7 @@ def main(argv=None):
                 pose_config = replace(pose_config, pose_model_path=args.pose_model.resolve())
             pose = MediaPipePoseTracker(pose_config)
         validate_args(args, [args.video, args.config, args.camera_config, args.boundary_config,
-                             args.fusion_config, args.pose_config, args.pose_model,
+                             args.fusion_config, args.pose_config, args.pose_model, args.procedure,
                              config.detector.model_path, config.detector.classes_path,
                              config.hand_tracker.model_path])
         frames, detector, hands, session = source_frames(args, camera_config)
@@ -138,9 +146,17 @@ def main(argv=None):
                     directory = ROOT / directory
                 event_path = directory / f"activities-{uuid4().hex}.jsonl"
             event_output = destination(stack, event_path)
+            guidance_output = destination(stack, args.guidance) if args.guidance else None
+            if procedure:
+                initial = procedure.start()
+                if guidance_output:
+                    write(guidance_output, asdict(initial))
             for frame in frames:
                 result = pipeline.process(frame)
                 activity = result.activity
+                decision = procedure.process(activity) if procedure else None
+                if guidance_output and decision.should_display:
+                    write(guidance_output, asdict(decision))
                 count += 1
                 if activity.status.value == "invalid_input":
                     errors += 1
@@ -160,6 +176,7 @@ def main(argv=None):
                     "boundary_quality_ok": result.boundary.quality_ok,
                     "boundary_reasons": result.boundary.quality_reasons,
                     "activity": asdict(activity), "timings_ms": result.timings_ms,
+                    **({"procedure": asdict(decision)} if decision else {}),
                 })
                 if activity.metadata["emitted"]:
                     write(event_output, asdict(activity))
