@@ -14,4 +14,6 @@ Owner:
     Module 03 — Optimization Sequence (Teammate 4: temporal section)
 """
 
-# TODO: Compute displacement between frames using frame timestamps, not frame counts.
+def displacement(previous, current):
+    if previous is None or current is None: return (0.0, 0.0)
+    return (float(current[0])-float(previous[0]), float(current[1])-float(previous[1]))
