@@ -1,312 +1,231 @@
-# Module 04 — Boundary Detection Pipeline
+# Module 04 — Boundary Detection
 
-> Receiving contract implemented: `boundary.input.input_validator.validate_boundary_input` checks real
-> `OptimizationOutputPacket + FramePacket` metadata, identity and coordinate consistency.
-> Segmentation, contours and boundary evidence remain scaffolded. See
-> [the authoritative integration contract](../perception/INTEGRATION.md).
+Module 04 turns a current Module 03 target and original source pixels into
+contour, chain-code, geometric, hand-proximity and confirmed temporal boundary
+evidence. It imports the existing shared packets; no private schema, detector,
+hand model, HAR, FSM, GUI, cloud service or model download is introduced.
 
-The receiver also verifies Module 03's temporal window, stable membership,
-confidence, presence flags and detection accounting. `object_frame.detections`
-contains current observations; `stable_detections` may include held evidence
-with `observed=False`. A held bbox is last-seen geometry and must not be used as
-a fresh target observation. Healthy warm-up/empty packets are accepted with
-false quality; ERROR/INVALID_INPUT packets are rejected. See
-[Module 03's output contract](../03_optimization/README.md).
+This is an offline SIH prototype. Defaults are demonstration heuristics, not
+scientifically validated thresholds. Accuracy, FPS and microgravity behavior
+have not been benchmarked. It is not flight-certified software.
+[REPAIR_REPORT.md](REPAIR_REPORT.md) records the independent-review repairs.
+[MERGE_REPORT.md](MERGE_REPORT.md) is the historical pre-review recovery record.
 
-## Purpose
+## Canonical API
 
-Module 04 analyses the **boundary (outline)** of the object the operator is interacting with, using
-classical image processing (segmentation, contours, Freeman / differential chain codes), and produces
-boundary-based evidence of whether the object is:
+```python
+from boundary.boundary_pipeline import BoundaryPipeline
+from boundary.config import BoundaryConfig
 
-```text
-stationary · moving · rotating · in contact with the hand · separating from the hand
+pipeline = BoundaryPipeline.from_yaml("configs/boundary.yaml")
+result = pipeline.process_optimization(optimization_packet, original_frame_packet)
+pipeline.reset()  # before replay, source/session changes or a new experiment
 ```
 
-This evidence is independent of Module 03's landmark-based reasoning, so Module 05 can cross-check
-the two.
+The existing safe `boundary` package locates the numbered owner directory.
+Dynamic `importlib.import_module("04_boundary.boundary_pipeline")` also works;
+numbered names are invalid in normal Python import syntax.
 
-## Position in Main Pipeline
+The unchanged receiving contract validator checks Module 03 packets against
+the retained original `FramePacket`: metadata, dimensions, detections, current/
+stable/window consistency, hands and interactions. Source pixels must match
+the source frame, not a resized PreparedFrame. It never treats a held box as
+current evidence. Target selection requires an explicitly selected current
+stable non-context detection, one unambiguous current interaction target, or
+the sole eligible object. Ambiguity/no eligible target yields NO_DETECTION.
 
-```text
-03 Optimization ──OptimizationOutputPacket──┐
-                                            ▼
-External frame source ──FramePacket──► [04 Boundary] ──BoundaryOutputPacket──► 05 Perception Fusion
+`target_track_id` is the operator ID; `target_object_track_id` is the selected
+object ID. Existing object/hand continuity keys are reused, not independently
+tracked. Multiple targets require explicit selection/individual instances.
+
+Standalone callers can provide an explicit reference assertion:
+
+```python
+pipeline = BoundaryPipeline(config=BoundaryConfig(require_valid_rack_reference=True))
+result = pipeline.process(image_bgr, 0, 0.0, roi=(20, 30, 80, 60),
+                          target_object_track_id=7, rack_valid=True)
 ```
 
-## Responsibilities
+The boolean `rack_valid` is caller-supplied evidence; Module 04 performs no
+calibration. It defaults false. The integrated path uses the canonical Module 03
+reference validity. Rack orientation remains None even when the reference is
+valid. `process_detections` accepts explicit original-pixel XYXY object boxes and
+the same rack_valid keyword, without running inference. Normal process ROI is
+original-pixel XYWH. Inputs are nonempty uint8 BGR/grayscale; integration also
+converts RGB sources locally. Raw hand dictionaries contain finite pixel XY
+points/landmarks and an optional stable hand ID.
 
-- Synchronizing `OptimizationOutputPacket` with the source frame by `frame_id`.
-- Selecting the target object (from Module 03 interaction candidates).
-- Boundary ROI generation and ROI preprocessing (on a copy).
-- Segmentation (e.g. HSV) and morphological mask cleanup.
-- Contour extraction, association with the target, validation and resampling.
-- Freeman chain coding, start-point normalization, differential chain coding, chain histograms.
-- Rack-relative boundary orientation (using Module 03's `RackReference`).
-- Geometric and hand-boundary features; contact evidence.
-- Temporal boundary tracking and change analysis → `BoundaryState` candidates.
-- Cross-checking against Module 03 motion/interaction (report only).
-- Multi-frame confirmation and a boundary quality gate.
+## Conservative segmentation and confidence
 
-## Non-Responsibilities
+1. Check raw grayscale ROI standard deviation before segmentation.
+2. Threshold once and evaluate both binary polarities; adaptive also evaluates
+   both. Canny outlines are filled into silhouettes before the same checks.
+3. Apply configured morphology; require bounded foreground occupancy.
+4. Require foreground/background separability: between-class variance divided
+   by total raw grayscale variance. Uniform/weak-contrast noise is rejected.
+5. Require a dominant connected component; reject fragmented noise.
+6. Validate contour area/perimeter and its ROI-local border contact. A bbox
+   spanning the ROI is rejected. Too many sides plus high border-point fraction
+   is rejected. A normal object touching one edge is allowed.
+7. Require consistency between foreground pixels and the filled contour, which
+   rejects holes/background outlines. Select by segmentation score, not simply
+   the largest candidate area.
 
-- Deciding whether an experiment procedure step is correct (Procedure FSM).
-- Final activity recognition (Module 05).
-- Object detection / tracking / `track_id` assignment (Module 02).
-- Pose / hand landmark inference or rack-reference generation (Module 03).
-- Modifying Module 03 outputs — the cross-check only *reports* agreement.
+Internal segmentation score is the minimum of separability, component dominance,
+filled-contour foreground density and one minus the border-point fraction.
+Final heuristic confidence is:
+`segmentation_score * (0.50 + 0.25*solidity + 0.25*continuity_score)`,
+where continuity uses the minimum of current and preceding accepted segmentation
+scores, or zero without history. Solidity cannot override failed segmentation.
+No interaction boost is used. These scores are not calibrated probabilities.
 
-## Inputs
+Rejected quality always publishes confidence=0, hand_contact=false,
+contact_confidence=0, UNKNOWN and unconfirmed state. Invalid masks publish no
+contour. Accepted segmentation subsequently rejected by rack/upstream/confidence
+gates may retain geometry for debugging, with zero confidence/contact/state.
+When only the confidence threshold rejects otherwise trusted segmentation,
+bounded geometry history may warm continuity; it never casts state votes or
+publishes contact until the complete public quality gate passes.
 
-| Input | Source | Notes |
-|-------|--------|-------|
-| `OptimizationOutputPacket` | Module 03 | Interaction candidates, hands, `RackReference`, pass-through `ObjectFrame` |
-| `FramePacket` (via frame buffer) | Module 01 | Source image; read-only |
-| `configs/boundary.yaml` | Repository | ROI, segmentation, morphology, contour, chain code, temporal |
+The foreground method remains an approximation for one isolated object in its
+ROI, not instance segmentation. Tight boxes without background contrast, clutter,
+occlusion and similar foreground/background colors may be conservatively
+rejected. Pad/tune the ROI on local demo footage; there is no general guarantee
+that all possible wrong contours are identifiable from pixels alone.
 
-## Outputs
+## Temporal boundary states and N-of-M confirmation
 
-| Output | Consumer | Notes |
-|--------|----------|-------|
-| `BoundaryOutputPacket` (`shared/schemas/boundary_packet.py`) | Module 05 | Primary output |
-| Debug frames (optional) | `outputs/debug_frames/` | ROI, mask, contour overlays |
-| `ModuleStatus` + timing | Module 01 health monitor | |
+Only fully quality-accepted frames enter state classification. Geometry, centroid
+and vote histories are bounded. Motion uses Euclidean image-plane centroid
+displacement; it assumes a fixed demo camera, not physical camera-up or gravity.
 
-## Internal Components
+| State | Candidate evidence |
+|---|---|
+| STATIONARY | At least motion_min_frames recent centroids; every displacement/source-frame interval <= stationary_tolerance_px |
+| MOVING | Every recent displacement/source-frame interval >= moving_threshold_px and net displacement/path length >= min_motion_coherence |
+| CONTACT | Valid geometry plus near-boundary evidence and contact proxy >= contact_min_confidence |
+| SEPARATING | Previously confirmed CONTACT, same identified hand, release beyond contact range, distance exceeds contact anchor by configured increase, and coherent MOVING evidence |
+| UNKNOWN | Warm-up, motion dead zone, ambiguous/no evidence or unconfirmed current candidate |
+| ROTATING | Not implemented; never inferred from image-axis orientation |
 
-| Folder | Files | Role |
-|--------|-------|------|
-| `input/` | `input_synchronizer.py`, `input_validator.py`, `target_selector.py` | Pairing, validation, target choice |
-| `roi/` | `boundary_roi.py` | Padded ROI around target (+ hands) |
-| `preprocessing/` | `roi_preprocess.py`, `illumination.py` | Blur / colour conversion / illumination normalization |
-| `segmentation/` | `foreground_segmenter.py`, `hsv_segmenter.py`, `mask_cleanup.py` | Binary mask |
-| `contour/` | `contour_extractor.py`, `contour_association.py`, `contour_validator.py`, `contour_resampler.py` | Target contour |
-| `chain_code/` | `freeman_chain.py`, `chain_normalizer.py`, `differential_chain.py`, `chain_histogram.py` | Shape encoding |
-| `features/` | `geometric_features.py`, `boundary_orientation.py`, `hand_boundary_features.py`, `contact_detector.py` | Features + contact evidence |
-| `temporal/` | `boundary_tracker.py`, `boundary_change.py`, `confirmation.py` | State over time |
-| `fusion/` | `optimization_crosscheck.py` | Agreement with Module 03 (report only) |
-| `quality/` | `boundary_quality_gate.py` | `quality_ok` + reasons |
-| `output/` | `boundary_packet_builder.py` | Build `BoundaryOutputPacket` |
+CONTACT takes precedence over motion. Separation is a bounded transition lasting
+at most confirmation_m valid released frames after the last confirmed contact;
+it needs motion plus release evidence in multiple frames. Missing/replaced/
+unidentified hands cannot establish that transition. Module 03 hand continuity
+keys take precedence over its hand ID; standalone IDs are the caller's
+responsibility. Proximity/contact/separation labels are image evidence, not proof
+of a physical experiment event or procedure correctness.
 
-> `fusion/` here is a **local cross-check** only. Multi-source evidence fusion belongs to Module 05.
+The current candidate must occur N times in the last M valid candidate frames.
+UNKNOWN never confirms. Defaults N=2/M=3 are anti-flicker demo settings.
+`boundary_state` becomes the current candidate only upon confirmation;
+`state_confirmed` is true then; `confirmed_frames` is its matching vote count
+in the bounded window, otherwise 0. Old states are not published through a
+changed/unconfirmed candidate. Invalid/absent geometry clears all semantic votes
+and contact transition anchors immediately. More than max_missing_frames missing
+IDs, large time gaps, resolution/target changes and reset clear semantic history; geometry retention
+alone cannot carry a confirmed contact through invalid frames.
 
-## Technology Stack
-
-> This stack is chosen for the **SIH prototype**: offline demonstration, modular development and rapid
-> iteration. It does **not** demonstrate spacecraft qualification, radiation tolerance, flight
-> certification, real microgravity validation or mission reliability.
-
-Module 04 is a **classical computer-vision module**. It runs no neural network; YOLO inference belongs
-to Module 02 only.
-
-### Core Technologies
-
-| Technology | Purpose | Required / Optional | Why Used |
-|------------|---------|---------------------|----------|
-| Python 3 | Module implementation | Required | Same language as the rest of the pipeline. |
-| OpenCV (`opencv-python`) | ROI extraction, colour conversion, HSV thresholding, binary masks, morphological opening/closing, contour detection, contour area, perimeter, bounding rectangle, convex hull, moments, shape features | Required (primary library) | Provides every classical segmentation and contour operation this module needs, offline and on the CPU. |
-| NumPy | Binary mask arrays, contour arrays, chain-code arrays, histograms, geometric calculations, temporal differences, boundary vectors | Required | OpenCV masks and contours are NumPy arrays; chain-code maths is simple array arithmetic. |
-| Custom Freeman chain code (Python + NumPy) | Boundary representation: Freeman code, start-point normalization, differential code, direction histogram | Required | A small, deterministic, fully testable local algorithm over OpenCV contour points. No deep-learning dependency is needed for chain coding. |
-| SciPy (`scipy`) | Signal smoothing, distance calculations, curve processing | Optional | Only if NumPy/OpenCV do not cover a needed operation simply. |
-| pytest | Tests on synthetic shapes with known answers | Development | |
-
-### Python Libraries
-
-| Library | Used For | Module Component |
-|---------|----------|------------------|
-| `cv2` (opencv-python) | ROI crop helpers, `cvtColor` (BGR→HSV), optional blur | `roi/boundary_roi.py`, `preprocessing/roi_preprocess.py` |
-| `cv2` | Illumination normalization option (e.g. CLAHE / histogram equalization) | `preprocessing/illumination.py` |
-| `cv2` | `inRange` HSV thresholding | `segmentation/hsv_segmenter.py`, `segmentation/foreground_segmenter.py` |
-| `cv2` | `morphologyEx` (open/close), connected components for small-blob removal | `segmentation/mask_cleanup.py` |
-| `cv2` | `findContours` | `contour/contour_extractor.py` |
-| `cv2` | `contourArea`, `arcLength`, `boundingRect` | `contour/contour_validator.py`, `features/geometric_features.py` |
-| `cv2` | `moments`, `convexHull`, `minAreaRect` | `features/geometric_features.py`, `features/boundary_orientation.py` |
-| `cv2` | `pointPolygonTest` (signed distance from hand landmark to contour) | `features/hand_boundary_features.py`, `features/contact_detector.py` |
-| `numpy` | Arc-length resampling | `contour/contour_resampler.py` |
-| `numpy` | Freeman code, normalization, modulo-8 differences, histograms | `chain_code/freeman_chain.py`, `chain_code/chain_normalizer.py`, `chain_code/differential_chain.py`, `chain_code/chain_histogram.py` |
-| `numpy` | Rack-relative orientation (projection onto `RackReference` axes) | `features/boundary_orientation.py` |
-| `numpy` | Temporal differences of centroid / orientation / chain statistics | `temporal/boundary_change.py`, `fusion/optimization_crosscheck.py` |
-| `collections.deque` | Boundary history and N-of-M confirmation | `temporal/boundary_tracker.py`, `temporal/confirmation.py` |
-| `yaml` (PyYAML) | `configs/boundary.yaml` | Loaded once at module start-up and passed to components |
-| `scipy` *(optional)* | Smoothing / distance utilities | `contour/contour_resampler.py`, `features/hand_boundary_features.py` |
-| `pytest` | Tests | `tests/` |
-
-### Segmentation Strategy
-
-Initial prototype options (selected through `segmentation.method` in `configs/boundary.yaml`):
-
-1. **HSV / colour thresholding**: per-class HSV ranges tuned on the demo setup.
-2. **Object-specific thresholding**: different ranges or methods per object class.
-3. **A mask supplied by a detector**, if one becomes available later (for example a segmentation model in
-   Module 02). Module 04 would consume the mask, but it still would not run detection itself.
-
-HSV segmentation is a **hackathon prototype approach** for a controlled demo environment. It is **not**
-claimed to generalize to spacecraft lighting, materials or backgrounds.
-
-### Required Technologies
-
-- Python 3, `opencv-python`, `numpy`, `PyYAML`
-- Custom Freeman chain-code implementation (Python + NumPy)
-- Standard library: `collections.deque`
-- Development: `pytest`
-
-### Optional Technologies
-
-- SciPy: smoothing, distance and curve-processing utilities, only where justified.
-
-### Future Optimization Technologies
-
-- None planned for the baseline. If profiling on the demo hardware shows a hotspot (e.g. resampling or
-  chain coding implemented in pure Python loops), the first step is to vectorize with NumPy. GPU or
-  compiled extensions are not planned.
-
-### Recommended Stack Summary
-
-| Technology | Purpose | Status |
-|---|---|---|
-| Python | Main implementation | Required |
-| OpenCV | Segmentation/contours/morphology | Required |
-| NumPy | Geometry/chain-code processing | Required |
-| Custom Freeman Chain Code | Boundary representation | Required |
-| SciPy | Additional numerical processing | Optional |
-| pytest | Tests | Development |
-
-## Technology Decisions
-
-### Why These Technologies Were Selected
-
-- **OpenCV** provides every classical operation the boundary pipeline needs (thresholding, morphology,
-  contours, shape measures, point-to-contour distance) in one offline library already used by the project.
-- **Custom Freeman chain code** is a few dozen lines of NumPy logic. Writing it locally keeps it
-  transparent and testable on synthetic shapes with exact expected outputs.
-- **HSV thresholding** is the simplest segmentation to tune and debug in a controlled demo setup.
-
-### Alternatives Considered
-
-| Area | Alternative | Why Not Used Initially |
-|------|-------------|------------------------|
-| Segmentation | Instance-segmentation model (e.g. a YOLO segmentation variant) | Needs labelled masks and training, and model inference belongs in Module 02. It could later supply masks to Module 04 (option 3 above). |
-| Segmentation | Background subtraction (e.g. MOG2) | Assumes a static background, and a stationary object is gradually absorbed into the background, which conflicts with reporting the "stationary" state. |
-| Segmentation | GrabCut, edge-based (Canny) segmentation | Higher per-frame cost (GrabCut) or more sensitive to texture and clutter (edges); can be evaluated later as config options. |
-| Shape representation | Fourier descriptors, Hu moments, shape context | Chain codes were chosen by the team's design. Hu moments (available in OpenCV) or Fourier descriptors could be added later as extra features. |
-| Numerical utilities | SciPy as a mandatory dependency | Not needed while NumPy/OpenCV cover the operations; kept optional. |
-
-No alternative is claimed to be worse; none has been benchmarked by the team.
-
-## CPU / GPU Considerations
-
-### CPU
-
-Module 04 runs entirely on the CPU. Processing is restricted to the target ROI, so its cost depends on ROI
-size and contour length rather than on the full frame. Chain-code and resampling code should be
-vectorized with NumPy rather than written as per-pixel Python loops.
-
-### GPU
-
-Not used and not required. OpenCV's CUDA modules need a custom OpenCV build and are not part of this
-prototype.
-
-### Hardware Considerations
-
-- Lighting and camera exposure strongly affect colour segmentation; tuned HSV ranges are valid only for
-  the setup they were tuned on.
-- Runtime performance must be benchmarked on the final demo hardware.
-
-## Offline Compatibility
-
-After the dependencies are installed and the configuration is prepared, Module 04 must **not** require
-internet access, cloud inference, external APIs or ground-station connectivity.
-
-- Module 04 uses **no model files**, only configuration and the source frames from Module 01.
-- Debug frames are written locally to `outputs/debug_frames/`.
-- Sample ROI images for offline tuning live in `data/samples/`.
-
-## Shared Schemas Used
-
-- Consumes: `OptimizationOutputPacket` (incl. `ObjectFrame`, `SpatialFeaturePacket`, `RackReference`), `FramePacket`
-- Produces: `BoundaryOutputPacket`
-- Enums: `BoundaryState`, `InteractionState`, `ModuleStatus`
+Missing IDs are counted as `current_frame_id - previous_frame_id - 1`: 10 to 12
+means one missing frame. Gaps at or below the configured tolerance preserve valid
+history; only actual accepted valid observations vote in N-of-M confirmation.
+Motion displacement is divided by the source-frame ID interval so dropped frames
+cannot inflate motion. These thresholds remain pixels per original source frame,
+not pixels per second; FPS changes may require tuning. Timestamp ordering and the
+separate max_time_gap_s reset still apply. Duplicate/backwards IDs are rejected.
+Module 03's existing policy degrades packets when its own source frames are
+missing; Module 04 continues to honor that upstream quality gate. Tests of real
+Module 03 packets therefore also exercise packet drops between modules.
 
 ## Configuration
 
-`configs/boundary.yaml`: `input`, `roi`, `preprocessing`, `segmentation` (HSV ranges per class),
-`morphology`, `contour`, `chain_code`, `features`, `temporal`, `crosscheck`, `quality`.
+`configs/boundary.yaml` now has explicit prototype defaults. The loader is
+read-only and validates known section/nested/parameter keys; unknown keys fail.
+Null numeric settings resolve code defaults, including blur=3; explicit 0/1
+disables blur. Existing nonnull wired settings remain configurable.
 
-Segmentation ranges depend on the real objects, background and lighting, and must be tuned on the
-demo setup. They are `null` / empty placeholders now.
+| Controls | Defaults |
+|---|---|
+| ROI padding_ratio / padding_px | 0.1 / 0 |
+| blur_kernel, threshold params | 3, {} (Otsu when threshold omitted) |
+| min_roi_stddev | 5 intensity units |
+| foreground fraction min/max | 0.01 / 0.90 |
+| min_component_dominance / min_contour_fill_fraction / min_separability | 0.80 / 0.85 / 0.80 |
+| border_margin_px / max_border_sides / max_border_point_fraction | 1 / 2 / 0.35 |
+| contour min area / max area / min perimeter | 20 / None / 0 pixels |
+| morphology open / close / iterations / min component area | 0 / 0 / 1 / 0 |
+| history_frames / max_missing_frames / max_time_gap_s | 20 / 2 / 1 second |
+| motion_min_frames / stationary tolerance / moving threshold | 3 / 1 / 2 pixels per original source frame |
+| min_motion_coherence / separation distance increase | 0.8 / 2 pixels |
+| contact_distance_px / contact_min_confidence | 20 / 0.5 |
+| confirmation_n / confirmation_m | 2 / 3 |
+| min_confidence | 0.35 |
+| require_optimization_quality / require_valid_rack_reference | shipped YAML true / true; standalone code rack gate false |
 
-## Dependencies
+The integrated object bbox is padded by padding_ratio times its largest dimension
+on each side, giving tight detections background context. Python and shipped YAML
+both default to 0.1. ROI extraction clamps the padded coordinates to the image
+bounds and rejects empty crops. Partial clipping remains subject to the unchanged
+geometry quality gate; padding cannot recover background outside the image.
+Standalone explicit ROIs retain their existing absolute padding_px behavior.
 
-- Runtime: `opencv-python`, `numpy`, `PyYAML` + standard library (`collections.deque`).
-- Optional: `scipy`.
-- Development: `pytest`.
-- No YOLO, PyTorch or other deep-learning dependency.
-- `shared/` package. No network access. See [Technology Stack](#technology-stack).
+Legacy confirmation_min_hits/confirmation_window/stationary_tolerance are wired
+aliases for n/m/stationary_tolerance_px; conflicting aliases fail explicitly.
+Threshold parameters are threshold/invert (invert sets initial candidate order;
+both polarities are still checked), adaptive block_size/c, or Canny low/high.
+Connectivity must be 8. Start normalization and differential code default true.
 
-## Developer Ownership
+Cross-check and hand-expanded ROI are **disabled**, and enabling either raises
+a configuration error. HSV, non-none illumination, nonnull contour resampling or
+rotation thresholds also raise explicit unsupported-feature errors. Empty
+reserved HSV/illumination settings are allowed solely for compatibility.
+Rack validity never invents orientation or current-frame calibration.
 
-| Area | Owner |
-|------|-------|
-| Module 04 (all folders) | Teammate 5 — Boundary Detection *(name to be filled in by the team)* |
+## Output, ownership and errors
 
-## How to Run Independently
+The sole output is `shared.schemas.boundary_packet.BoundaryOutputPacket`.
+Frame ID, seconds and identities survive. Contour/centroid geometry is in original
+pixels. Dense contours remain unresampled despite the older shared comment;
+the shared schema is unchanged. Freeman directions use image coordinates:
+**+y downward**, numbered E, SE, S, SW, W, NW, N, NE (0 through 7). Closing edge
+is included; cyclic normalization preserves steps. Histogram is eight normalized
+bins. No camera angle is published as rack orientation. Crosscheck remains None.
 
-Once implemented, from the repository root:
+A usable packet is OK; healthy absent/rejected segmentation is NO_DETECTION;
+later quality rejection is DEGRADED; malformed raw inputs return INVALID_INPUT.
+Preserved programmer contract mismatches in process_optimization raise
+BoundaryInputError before temporal mutation. Ordering/new-stream operational
+errors return INVALID_INPUT and retain prior valid state. This dual convention
+is retained for compatibility rather than changing the receiver's API.
+
+Use one instance per ordered stream and serialize process/reset calls.
+New source/session requires explicit reset. Resolution changes/large time gaps
+restart bounded histories. Only crops/color conversions and feature arrays are
+owned; no source image/packet is mutated, no image is retained in history.
+Reset clears order/context/target, geometry and all semantic state, allowing
+deterministic replay.
+
+## Offline runner and tests
 
 ```bash
-python scripts/run_boundary.py
+python scripts/run_boundary.py --synthetic --frames 5
+python -m boundary.standalone_cli --image local.png --roi 20 30 80 60
+python -m boundary.standalone_cli --video local.mp4 --frames 120 --output local.jsonl
+python -m boundary.standalone_cli --synthetic --config configs/boundary.yaml --rack-valid
+python -m compileall 04_boundary shared
+python -m pytest -q 04_boundary/tests
+python -m pytest -q tests/test_packet_contracts.py tests/test_optimization_to_boundary.py tests/test_boundary_runtime_integration.py
+python -m pytest -q 03_optimization/tests
+python -m pytest -q
 ```
 
-Displays ROI, mask, contour, chain code and boundary state. A planned option allows tuning
-segmentation on saved ROI images in `data/samples/` without running the full pipeline.
+The CLI rack flag is an explicit caller assertion, not calibration. No weights,
+YOLO, MediaPipe, Streamlit, camera or network is mandatory. Synthetic fixtures and
+model-free stage packets exercise all reviewed scenarios, source/packet ownership,
+state transitions, confidence/contact invariants and reset/boundedness. Only five
+Module 04 tests remain individually skipped: HSV, multi-contour association,
+resampling, rack rotation and optimization cross-check.
 
-## Testing
-
-```bash
-python -m pytest 04_boundary/tests
-```
-
-| Test file | Covers |
-|-----------|--------|
-| `test_segmentation.py` | Config ranges, mask cleanup, empty masks, no source modification |
-| `test_contours.py` | ROI offsets, target association, validation, resampling |
-| `test_chain_code.py` | Freeman code on synthetic shapes, normalization, rotation invariance, histograms |
-| `test_contact.py` | Contact / no-contact evidence |
-| `test_boundary_tracking.py` | Stationary / moving / rotating synthetic objects, confirmation |
-| `test_boundary_packet.py` | Metadata copy, shared schema, cross-check, quality reasons |
-
-All tests are currently skipped placeholders. Chain-code tests should use synthetic shapes with
-known answers so they can be verified exactly.
-
-## Integration Contract
-
-- `frame_id`, `timestamp_s`, `target_track_id` copied **unchanged** from `OptimizationOutputPacket`.
-- `contour_px`, `centroid_px` are original source-frame pixels.
-- `chain_code` values are in `0..7` (8-connectivity) with the numbering convention documented in `chain_code/freeman_chain.py`.
-- `orientation_deg_rack` is relative to the rack reference x-axis, or `None` when the reference is invalid.
-- `boundary_state` uses `BoundaryState`; it is evidence, not a procedure decision.
-- `crosscheck_agrees` only reports agreement; Module 03 data is never modified.
-- `quality_ok == False` always has at least one `quality_reasons` entry.
-
-## Error / Failure Handling
-
-| Failure | Behaviour |
-|---------|-----------|
-| No target object selected | Packet with `BoundaryState.UNKNOWN`, `NO_DETECTION` |
-| Empty / noisy mask | Contour rejected; quality reason recorded |
-| Multiple candidate contours | Association rule picks one or reports ambiguity |
-| Rack reference invalid | `orientation_deg_rack = None`; rotation state not reported |
-| Upstream `quality_ok == False` | Behaviour per `input.require_optimization_quality` |
-| Frame evicted from buffer | `INVALID_INPUT` |
-
-## Current Limitations
-
-- Colour segmentation is sensitive to lighting and object colour; values are untuned placeholders.
-- 2D image boundary only; out-of-plane rotation is not measured.
-- Single target object per frame.
-
-## Future Improvements
-
-- Alternative segmentation methods selectable from config.
-- Shape matching against stored reference chain codes per object class.
-- Multiple simultaneous targets.
+Module 04 -> Module 05 consumer verification is unavailable because Module 05
+is not implemented. This is not a Module 04 runtime failure. Adding source/session
+IDs to the boundary packet is a future centralized shared-schema request.

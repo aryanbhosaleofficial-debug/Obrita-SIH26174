@@ -1,17 +1,26 @@
-"""
-Geometric boundary features.
+"""Pixel geometry only; no image-axis angle is published as rack orientation."""
 
-Implementation status:
-    Scaffold only.
+import math
 
-Input:
-    Validated contour
+from ..contour.contour_validator import contour_metrics
 
-Output:
-    Area, perimeter, centroid, bounding box (pixels)
 
-Owner:
-    Module 04 — Boundary Detection
-"""
+def extract_features(contour, chain_code=None):
+    metrics = contour_metrics(contour)
+    x, y, width, height = metrics["bbox"]
+    area, perimeter = metrics["area"], metrics["perimeter"]
+    return {
+        "area": area,
+        "perimeter": perimeter,
+        "width": width,
+        "height": height,
+        "aspect_ratio": width / height if height else 0.0,
+        "centroid": metrics["centroid"],
+        "bbox": [x, y, width, height],
+        "solidity": metrics["solidity"],
+        "compactness": 4 * math.pi * area / perimeter**2 if perimeter else 0.0,
+        "chain_code_length": len(chain_code or []),
+    }
 
-# TODO: Report units as pixels in the original frame.
+
+geometric_features = extract_features

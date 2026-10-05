@@ -7,7 +7,7 @@ consumers were examples/tests; numbered modules were still scaffolds.
 Camera / FramePacket -> Module 01 FrameProcessor -> PreparedFrame
 -> Module 02 YoloPipeline -> ObjectFrame
 -> Module 03 OptimizationPipeline -> OptimizationOutputPacket
--> Module 04 boundary input validation -> team-owned boundary analysis
+-> Module 04 boundary input validation -> BoundaryPipeline -> BoundaryOutputPacket
 -> Module 05 HAR -> procedure FSM.
 
 Module 03 now exposes `optimization.OptimizationSequence.process(ObjectFrame)`
@@ -51,7 +51,11 @@ time/size discontinuities continue allocating new keys within a run.
 
 Module 04's receiving validator checks the new window/current/stable consistency,
 presence flags, confidence and counts along with existing metadata and geometric
-contracts. It still performs no segmentation. Warm-up/empty/held-only outputs
+contracts. Validation itself performs no segmentation; the recovered
+`BoundaryPipeline.process_optimization(packet, source_frame)` uses that validator
+and then analyzes a current stable target's ROI. See
+[Module 04's authoritative runtime contract](../04_boundary/README.md).
+Warm-up/empty/held-only outputs
 are consumable contracts with false quality and explicit reasons. ERROR and
 INVALID_INPUT outputs are unusable. Do not bypass the actual receiver with an
 adapter. `PerceptionChain` serializes stage calls; direct optimizer callers must
@@ -156,8 +160,13 @@ these files. Mock data and demo thresholds are explicitly synthetic/configurable
 
 Execute FrameProcessor -> YoloPipeline -> OptimizationPipeline -> actual Module 04
 input validator using real shared packets. Model-free tests inject synthetic
-inference backends only; stage logic and packet conversion stay real. Boundary
-segmentation, HAR and FSM are not replaced or claimed complete by this repair.
+inference backends only; stage logic and packet conversion stay real. The later
+Module 04 recovery separately verifies real local segmentation, contours and
+shared output packets in `tests/test_boundary_runtime_integration.py`. Boundary
+state classification now supports confirmed STATIONARY/MOVING/CONTACT/SEPARATING
+after the targeted Module 04 repair. Rack-relative rotation, Module 05 runtime,
+HAR and FSM remain incomplete. `PerceptionChain` itself still orchestrates only
+Modules 01-03. See [repair evidence](../04_boundary/REPAIR_REPORT.md).
 
 ## Migration from the conflicting implementation
 

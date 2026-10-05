@@ -1,62 +1,71 @@
-# =============================================================================
-# boundary.yaml — Module 04 Boundary Detection
-#
-# PLACEHOLDER CONFIGURATION. Segmentation ranges and thresholds depend on the
-# real objects, background and lighting of the demo setup and must be tuned
-# there. Nothing below is a validated value.
-# =============================================================================
-
+# Module 04 prototype demo defaults: deterministic heuristics, NOT validated
+# accuracy/flight/microgravity settings. Tune on local demonstration footage.
 input:
-  # Skip boundary analysis when Module 03 quality_ok is false.
   require_optimization_quality: true
 
 roi:
-  padding_ratio: null      # fraction of target bbox size added on each side
-  include_hands: true      # extend ROI to include hand landmarks near the target
+  padding_ratio: 0.1        # fraction of max object bbox dimension on each side
+  padding_px: 0
+  include_hands: false      # not implemented; enabling raises a config error
 
 preprocessing:
-  blur_kernel: null        # odd integer, null = no blur
+  blur_kernel: 3            # odd integer; 0/1 disables; null resolves default 3
   illumination:
-    method: null           # e.g. none / histogram-equalization variant, chosen on demo footage
+    method: none            # correction not implemented; other methods rejected
     params: {}
 
 segmentation:
-  method: null             # "hsv" or another foreground method
-  hsv:
-    # Per-class HSV ranges: {class_name: {lower: [h, s, v], upper: [h, s, v]}}
-    ranges: {}
+  method: threshold         # threshold (both polarities), adaptive, or canny
+  params: {}                # omitted threshold uses Otsu; no HSV support
+  min_roi_stddev: 5.0        # grayscale information floor, intensity units
+  min_foreground_fraction: 0.01
+  max_foreground_fraction: 0.90
+  min_component_dominance: 0.80
+  min_contour_fill_fraction: 0.85
+  min_separability: 0.80     # between-class / total grayscale variance
 
 morphology:
-  open_kernel: null
-  close_kernel: null
-  iterations: null
-  min_component_area_px: null
+  open_kernel: 0
+  close_kernel: 0
+  iterations: 1
+  min_component_area_px: 0
 
 contour:
-  min_area_px: null
+  min_area_px: 20.0
   max_area_px: null
-  min_perimeter_px: null
-  # Resampled contour length (points) or spacing; set exactly one.
+  min_perimeter_px: 0.0
+  border_margin_px: 1
+  max_border_sides: 2        # 3+ sides AND high border-point fraction rejected
+  max_border_point_fraction: 0.35
+  # Dense original-pixel contours; resampling remains unsupported.
   resample_points: null
   resample_spacing_px: null
 
 chain_code:
-  connectivity: 8          # Freeman chain code connectivity (4 or 8)
+  connectivity: 8           # only 8 supported, image convention +y downward
   normalize_start_point: true
   use_differential: true
 
 features:
-  contact_distance_px: null      # hand-landmark to boundary distance treated as contact evidence
+  contact_distance_px: 20.0  # proximity evidence, not physical contact
+  contact_min_confidence: 0.5
 
 temporal:
-  history_frames: null
-  stationary_tolerance: null     # centroid / orientation change below which state = stationary
-  rotation_threshold_deg: null   # rack-relative rotation threshold
-  confirmation_min_hits: null
-  confirmation_window: null
+  history_frames: 20
+  max_missing_frames: 2       # current ID - previous ID - 1; larger gaps reset
+  max_time_gap_s: 1.0
+  motion_min_frames: 3
+  stationary_tolerance_px: 1.0  # maximum displacement / source-frame interval
+  moving_threshold_px: 2.0     # minimum pixels/source frame; dead zone is UNKNOWN
+  min_motion_coherence: 0.8    # net displacement / path length
+  separation_distance_increase_px: 2.0
+  confirmation_n: 2
+  confirmation_m: 3
+  rotation_threshold_deg: null # rack-relative rotation remains unsupported
 
 crosscheck:
-  enabled: true
+  enabled: false             # not implemented; enabling raises a config error
 
 quality:
-  require_valid_rack_reference: true
+  require_valid_rack_reference: true # standalone caller supplies rack_valid
+  min_confidence: 0.35

@@ -1,17 +1,24 @@
-"""
-Contour extraction.
+"""Extract dense contours and restore original-image coordinates."""
 
-Implementation status:
-    Scaffold only.
+from __future__ import annotations
 
-Input:
-    Cleaned mask
+import cv2
+import numpy as np
 
-Output:
-    Contours in original-frame pixels
 
-Owner:
-    Module 04 — Boundary Detection
-"""
+def extract_contours(mask, offset=(0, 0), *, external_only=True):
+    if mask is None or np.asarray(mask).size == 0:
+        return []
+    mode = cv2.RETR_EXTERNAL if external_only else cv2.RETR_LIST
+    contours, _ = cv2.findContours(
+        (np.asarray(mask) > 0).astype(np.uint8), mode, cv2.CHAIN_APPROX_NONE
+    )
+    ox, oy = map(float, offset)
+    return [
+        c.reshape(-1, 2).astype(float) + np.array([ox, oy])
+        for c in contours
+        if len(c) >= 3
+    ]
 
-# TODO: Extract contours (OpenCV) and add ROI offset.
+
+find_contours = extract_contours
