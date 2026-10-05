@@ -3,8 +3,6 @@
 Relocated perception algorithms; no YOLO ownership or frame-source ownership.
 """
 
-from copy import deepcopy
-from dataclasses import replace
 from time import perf_counter
 
 import cv2
@@ -14,15 +12,17 @@ from optimization.hands.hand_tracker import (
     NullHandTracker,
     filter_hands,
 )
+from optimization.input.input_synchronizer import validate_pair
 from optimization.interaction.associations import associate
 from optimization.interaction.primitives import interaction_candidates
+from optimization.optimizer import OptimizationSequence
+from optimization.output.optimization_packet_builder import build_optimization_packet
 from optimization.pose.pose_tracker import NullPoseTracker, PoseTracker
 from optimization.reference_frame.coordinate_frame import (
     ArucoCoordinateTransformer,
     ManualRackTransformer,
     UnavailableReference,
 )
-from optimization.temporal.stabilizer import PerceptionStabilizer
 
 from shared.config import PipelineConfig
 from shared.diagnostics import Diagnostic, NoticeCode, WarningCode
@@ -36,7 +36,6 @@ from shared.schemas.observations import (
 )
 from shared.schemas.optimization_packet import OptimizationOutputPacket
 from shared.schemas.prepared_frame import PreparedFrame
-from shared.schemas.spatial_feature_packet import Landmark, SpatialFeaturePacket
 from shared.utils.observation import valid_point, valid_score
 
 
@@ -78,9 +77,10 @@ class OptimizationPipeline:
                 else ManualRackTransformer(r.corners_normalized or [], r.reference_id)
             )
         )
-        self._stabilizer = PerceptionStabilizer(
-            config.stabilization, config.interaction
+        self._sequence = OptimizationSequence(
+            config.stabilization, interaction=config.interaction
         )
+        self._stabilizer = self._sequence._stabilizer
         self._reference_context = None
         self._initialized = False
 
@@ -100,32 +100,15 @@ class OptimizationPipeline:
                 self._initialized = False
 
     def reset(self):
-        self._stabilizer.reset()
+        self.close()
+        self._sequence.reset()
         self._reference_context = None
 
     def process(
         self, prepared: PreparedFrame, objects: ObjectFrame
     ) -> OptimizationOutputPacket:
         started = perf_counter()
-        source = prepared.source
-        if source is None:
-            raise ValueError("PreparedFrame must retain source")
-        if (
-            objects.frame_id,
-            objects.timestamp_s,
-            objects.source_id,
-            objects.session_id,
-            objects.image_width,
-            objects.image_height,
-        ) != (
-            source.frame_id,
-            source.timestamp_s,
-            source.source_id,
-            source.session_id,
-            source.width,
-            source.height,
-        ):
-            raise ValueError("ObjectFrame metadata does not match PreparedFrame source")
+        source = validate_pair(prepared, objects)
         result = OptimizationObservations(
             source.frame_id,
             source.timestamp_s,
@@ -152,6 +135,7 @@ class OptimizationPipeline:
             w for w in objects.warnings if w not in prepared.warnings
         ]
         result.notices = list(objects.notices)
+        admission = None
 
         def timed(name, action):
             t = perf_counter()
@@ -167,42 +151,11 @@ class OptimizationPipeline:
                 + objects.stage_timings_ms.get("object_detection_ms", 0)
             )
             result.stage_timings_ms["total_ms"] = result.processing_time_ms
-            # Health + stable current evidence, not a claim of verified touch or identity.
-            result.reliable_for_temporal_reasoning = result.status in (
-                ModuleStatus.OK,
-                ModuleStatus.NO_DETECTION,
-            ) and any(d.is_stable for d in result.detections)
-            spatial = SpatialFeaturePacket(
-                source.frame_id,
-                source.timestamp_s,
-                hands=result.hands,
-                status=result.status,
-                reference_frame=result.reference_frame,
-            )
-            # SpatialFeaturePacket describes one operator; the complete injected
-            # pose list remains observable in observations.poses.
-            if result.poses:
-                pose = result.poses[0]
-                spatial.pose_landmarks = [Landmark(p.x, p.y) for p in pose.landmarks]
-                spatial.rack_relative_pose = [
-                    (p.x, p.y, None) for p in (pose.reference_landmarks or [])
-                ]
-            return OptimizationOutputPacket(
-                source.frame_id,
-                source.timestamp_s,
-                object_frame=replace(objects, detections=result.detections),
-                spatial=spatial,
-                interactions=result.interactions,
-                quality_ok=result.reliable_for_temporal_reasoning,
-                quality_reasons=[w.code.value for w in result.warnings],
-                status=result.status,
-                observations=result,
-                source_id=source.source_id,
-                session_id=source.session_id,
-                reliable_for_temporal_reasoning=result.reliable_for_temporal_reasoning,
-                warnings=result.warnings,
-                notices=result.notices,
-                stage_timings_ms=result.stage_timings_ms,
+            packet = build_optimization_packet(objects, result)
+            return (
+                self._sequence._attach(packet, objects, admission)
+                if admission is not None
+                else packet
             )
 
         if prepared.status == ModuleStatus.INVALID_INPUT:
@@ -210,13 +163,19 @@ class OptimizationPipeline:
                 self._stabilizer.age_missing(prepared.missing_frames)
             result.status = ModuleStatus.INVALID_INPUT
             return finish()
-        if prepared.reset_required:
+        admission = self._sequence._begin(
+            objects,
+            missing_frames=prepared.missing_frames,
+            reset_required=prepared.reset_required,
+        )
+        result.warnings.extend(
+            w for w in admission.warnings if w not in result.warnings
+        )
+        if admission.restarted:
             self.close()
-            self.reset()
-        elif prepared.missing_frames:
-            self._stabilizer.age_missing(prepared.missing_frames)
+            self._reference_context = None
         self.initialize()
-        result.detections = deepcopy(objects.detections)
+        result.detections = admission.detections
         shape = (source.height, source.width)
         hand_failed = False
         try:
@@ -321,17 +280,18 @@ class OptimizationPipeline:
         if context != self._reference_context:
             self._stabilizer.reset_geometry()
             self._reference_context = context
+        timed(
+            "stabilization_ms",
+            lambda: self._stabilizer.update_observations(
+                result.detections,
+                result.hands,
+                shape,
+                source.timestamp_s,
+                result.coordinate_frame_valid,
+                frame_id=source.frame_id,
+            ),
+        )
         try:
-            timed(
-                "stabilization_ms",
-                lambda: self._stabilizer.update_observations(
-                    result.detections,
-                    result.hands,
-                    shape,
-                    source.timestamp_s,
-                    result.coordinate_frame_valid,
-                ),
-            )
             result.associations = timed(
                 "association_ms",
                 lambda: associate(
@@ -355,7 +315,7 @@ class OptimizationPipeline:
             result.interactions = timed("stabilization_ms", stabilize)
         except Exception as exc:  # noqa: BLE001 -- isolate replaceable backend failure as structured runtime diagnostics
             result.associations, result.interactions = [], []
-            self._stabilizer.age_missing(1)
+            self._stabilizer.reset_geometry()
             result.warnings.append(
                 Diagnostic(WarningCode.GEOMETRY_FAILURE, {"message": str(exc)})
             )
@@ -372,6 +332,11 @@ class OptimizationPipeline:
             result.notices.append(Diagnostic(NoticeCode.AMBIGUOUS_ASSOCIATION))
         result.status = ModuleStatus.DEGRADED if result.warnings else ModuleStatus.OK
         if (
+            objects.status == ModuleStatus.DEGRADED
+            or prepared.status == ModuleStatus.DEGRADED
+        ):
+            result.status = ModuleStatus.DEGRADED
+        if (
             not result.detections
             and not result.hands
             and not result.poses
@@ -384,4 +349,8 @@ class OptimizationPipeline:
             or self.config.hand_tracker.backend == "none"
         ):
             result.status = ModuleStatus.ERROR
+        elif objects.status == ModuleStatus.ERROR:
+            result.status = ModuleStatus.DEGRADED
+        elif objects.status == ModuleStatus.INVALID_INPUT:
+            result.status = ModuleStatus.INVALID_INPUT
         return finish()

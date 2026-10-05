@@ -5,6 +5,14 @@
 > Segmentation, contours and boundary evidence remain scaffolded. See
 > [the authoritative integration contract](../perception/INTEGRATION.md).
 
+The receiver also verifies Module 03's temporal window, stable membership,
+confidence, presence flags and detection accounting. `object_frame.detections`
+contains current observations; `stable_detections` may include held evidence
+with `observed=False`. A held bbox is last-seen geometry and must not be used as
+a fresh target observation. Healthy warm-up/empty packets are accepted with
+false quality; ERROR/INVALID_INPUT packets are rejected. See
+[Module 03's output contract](../03_optimization/README.md).
+
 ## Purpose
 
 Module 04 analyses the **boundary (outline)** of the object the operator is interacting with, using
