@@ -56,10 +56,11 @@ class FullSystemRuntime:
         self.fsm = ProcedureFSM(definition=definition)
         self.consumer = ProcedureIntegration(self.fsm,
             alert_sink=self._alert if voice else None, log_sink=self._guidance_log)
-        self.health = {"Camera": "WAITING", "YOLO": "WAITING", "Optimization": "WAITING",
-                       "Workspace": "WAITING", "Fusion": "WAITING", "Pose/Hands": "WAITING",
+        self.health = {"Camera": "WAITING", "Preprocessing": "WAITING", "YOLO": "WAITING", "Optimization": "WAITING",
+                       "Boundary": "WAITING", "Workspace": "WAITING", "Fusion": "WAITING", "Pose/Hands": "WAITING",
+                       "Activity Adapter": "WAITING",
                        "FSM": "not_started", "Voice": "OFF", "Logging": "OK",
-                       "Recording": "ON" if recorder else "OFF", "Streaming": "ON" if stream else "OFF"}
+                       "Recording": "WAITING" if recorder else "OFF", "Streaming": "WAITING" if stream else "OFF"}
         self.health_errors = {}
         self.last_decision = None
         self.latest_snapshot = None
@@ -87,13 +88,16 @@ class FullSystemRuntime:
         try:
             return callback()
         except Exception as exc:
-            first_failure = name not in self.health_errors
-            self.health[name] = "DEGRADED"
-            self.health_errors[name] = str(exc)
-            if first_failure:
-                self.log.emit({"event": "output_error", "output": name, "reason": str(exc)})
-                LOGGER.warning("%s degraded: %s", name, exc)
+            self._degrade(name, exc)
             return None
+
+    def _degrade(self, name, error):
+        first_failure = name not in self.health_errors
+        self.health[name] = "DEGRADED"
+        self.health_errors[name] = str(error)
+        if first_failure:
+            self.log.emit({"event": "output_error", "output": name, "reason": str(error)})
+            LOGGER.warning("%s degraded: %s", name, error)
 
     def _controls(self):
         from queue import Empty
@@ -105,31 +109,52 @@ class FullSystemRuntime:
             except Empty:
                 break
             try:
-                if command == "voice" and self.voice:
-                    self.voice.mute(value)
+                if command == "voice":
+                    if not self.voice:
+                        raise ValueError("voice subsystem is not enabled; launch with --voice")
+                    self._optional("Voice", lambda: self.voice.mute(value))
                 elif command in ("pause", "resume", "abort"):
                     self.last_decision = getattr(self.consumer, command)()
                 elif command == "reset":
                     self.consumer.reset()
                     if self.voice:
-                        self.voice.manager.reset()
+                        self._optional("Voice", self.voice.manager.reset)
                     self.last_decision = self.consumer.start()
                     self._last_recovery = None
+                else:
+                    raise ValueError("unknown runtime control")
+                self.log.emit({"event": "control_applied", "control": command, "value": value})
             except ValueError as exc:
                 self.log.emit({"event": "control_rejected", "control": command, "reason": str(exc)})
 
     def _status(self, packet, result, tracked):
-        self.health.update({"Camera": "OK", "YOLO": result.upstream.objects.status.value,
+        self.health.update({"Camera": "OK", "Preprocessing": result.upstream.prepared.status.value,
+            "YOLO": result.upstream.objects.status.value,
             "Optimization": result.upstream.optimization.status.value,
+            "Boundary": result.boundary.status.value,
             "Workspace": "OK" if result.upstream.optimization.spatial.reference_frame.valid else "UNAVAILABLE",
             "Fusion": result.activity.status.value, "Pose/Hands": tracked.status.value,
-            "FSM": self.fsm.state.value, "Voice": self.voice.status if self.voice else "OFF",
+            "FSM": self.fsm.state.value, "Voice": ("STOPPED" if self.closed else self.voice.status) if self.voice else "OFF",
             "Logging": "DEGRADED" if self.log.error else "OK"})
+        for name in ("Recording", "Streaming"):
+            resource = self.recorder if name == "Recording" else self.stream
+            if resource:
+                if getattr(resource, "error", None):
+                    self._degrade(name, resource.error)
+                elif self.closed:
+                    self.health[name] = "OFF"
+                else:
+                    ready = getattr(resource, "jpeg", None) is not None if name == "Streaming" else resource.written > 0
+                    self.health[name] = "OK" if ready else "WAITING"
+        if self.voice and self.voice.status in ("VOICE_ERROR", "VOICE_UNAVAILABLE"):
+            records = self.log.records
+            reason = next((r.get("reason", self.voice.status) for r in reversed(records)
+                           if r.get("event") in ("voice_unavailable", "audio_playback_error")), self.voice.status)
+            self._degrade("Voice", reason)
+        if self.log.error:
+            self.health_errors["Logging"] = self.log.error
         for name in self.health_errors:
             self.health[name] = "DEGRADED"
-        if self.recorder and self.recorder.error:
-            self.health["Recording"] = "DEGRADED"
-            self.health_errors["Recording"] = self.recorder.error
         # Publish actual playback records, never an enqueue request as spoken audio.
         for record in reversed(self.log.records):
             if record.get("event") == "audio_playback_started":
@@ -140,6 +165,8 @@ class FullSystemRuntime:
         view = self.last_decision or decision
         payload = gui_snapshot(view)
         payload.update(stamp=f"{packet.timestamp_s:.3f}", met_seconds=packet.timestamp_s,
+            frame_id=packet.frame_id, timestamp_s=packet.timestamp_s,
+            source_id=packet.source_id, session_id=packet.session_id,
             confidence=view.confidence, spoken=self._last_spoken,
             scene={"simulated": False, "overlays_rendered": True,
                    "objects": [{"name": d.class_name, "conf": d.confidence,
@@ -149,22 +176,31 @@ class FullSystemRuntime:
                        for d in result.upstream.objects.detections],
                    "hands": [{"tip": (h.landmarks[8].normalized_xy or (0., 0.)),
                               "wrist": (h.wrist.normalized_xy or (0., 0.)),
-                              "conf": h.handedness_score or 0.} for h in tracked.hands]},
-            recording=bool(self.recorder and not self.recorder.error),
-            lan_streaming=bool(self.stream and self.health["Streaming"] != "DEGRADED"),
-            voice_on=bool(self.voice and self.voice.enabled), log_path=str(self.log.path),
+                              "conf": h.handedness_score} for h in tracked.hands]},
+            recording=bool(self.recorder and not self.closed and self.health["Recording"] == "OK"),
+            lan_streaming=bool(self.stream and not self.closed and self.health["Streaming"] == "OK"),
+            voice_on=bool(self.voice and not self.closed and self.voice.enabled), log_path=str(self.log.path),
             footer=("Synthetic inference and semantic events. " if self.scenario else "Synthetic inference; real fusion rules. " if packet.metadata.get("synthetic") else "Local inference. ")
                    + "Prototype BAS assistance. " + " | ".join(f"{k}: {v}" for k, v in self.health.items()))
         if view.metadata.get("upstream", {}).get("mapping_semantics") == "demo_proxy":
             payload["footer"] = "Contact/departure demo proxies, not verified pick/place recognition. " + payload["footer"]
-        payload["chain"] = [{"stage": name, "module": name, "note": self.health_errors.get(name, ""), "status": status}
-                            for name, status in self.health.items()]
-        payload["chain"].append({"stage": "Activity", "module": "Semantic adapter",
-                                 "note": view.observed_action or "waiting", "status": view.decision.value})
-        payload["log"] = [{"t": f"{r.get('timestamp_s', 0.) or 0.:.3f}", "level": "event",
+        modules = {"Preprocessing": "Module 01", "YOLO": "Module 02 / YOLO",
+                   "Optimization": "Module 03", "Boundary": "Module 04", "Fusion": "Module 05 / Fusion",
+                   "Pose/Hands": "Module 06 / Pose + Hands"}
+        payload["chain"] = [{"stage": name, "module": modules.get(name, name),
+                             "note": self.health_errors.get(name, ""), "status": status.upper()}
+                            for name, status in self.health.items() if name != "Voice_before_shutdown"]
+        records = self.log.records
+        payload["log"] = [{"t": f"{r['timestamp_s']:.3f}" if r.get("timestamp_s") is not None else r.get("utc", ""),
+                           "level": r.get("severity", "warning" if r.get("event") in ("output_error", "system_error", "control_rejected") else "event"),
                            "event": str(r.get("event", r.get("decision", ""))),
-                           "detail": str(r.get("message", r.get("reason", ""))),
-                           "conf": r.get("confidence")} for r in self.log.records[-15:]]
+                           "detail": str(r.get("message", r.get("reason", r.get("control", r.get("exit_reason", ""))))),
+                           "conf": r.get("confidence")} for r in records[-15:]]
+        payload["alerts"].extend({"t": payload["stamp"], "level": "caution", "text": f"{name} degraded: {reason}"}
+                                 for name, reason in self.health_errors.items())
+        if self.error:
+            payload.update(status_level="warning", status_text=self.error)
+            payload["alerts"].append({"t": payload["stamp"], "level": "warning", "text": self.error})
         observations = result.upstream.optimization.observations
         payload["readings"] = [{"name": f"{h.handedness or 'Unknown'} hand",
                                 "x": h.reference_palm_center.x if h.reference_palm_center else None,
@@ -177,8 +213,17 @@ class FullSystemRuntime:
                                "hands": [h.handedness for h in tracked.hands]}
         return payload
 
+    def _publish_gui(self, display, payload):
+        if hasattr(self.gui, "push_update"):
+            self._optional("GUI", lambda: self.gui.push_update(display, payload))
+        else:  # legacy non-Qt sinks; production always uses the paired bridge API
+            if display is not None:
+                self._optional("GUI", lambda: self.gui.push_frame(display))
+            self._optional("GUI", lambda: self.gui.push_snapshot(payload))
+
     def run(self, frames, *, max_frames=None):
         started = perf_counter()
+        last_frame = None
         try:
             with ExitStack() as stack:
                 stack.callback(getattr(frames, "close", lambda: None))
@@ -202,9 +247,13 @@ class FullSystemRuntime:
                     parts = (result.upstream.prepared, result.upstream.objects,
                              result.upstream.optimization, result.boundary, result.activity, tracked)
                     if any(p.status in (ModuleStatus.ERROR, ModuleStatus.INVALID_INPUT) for p in parts):
+                        self._status(packet, result, tracked)
                         raise RuntimeError("critical perception error/invalid input; inspect module diagnostics")
                     # All semantic inputs, including simulator events, retain this physical frame identity.
-                    event = self.scenario.event(packet) if self.scenario else self.adapter.adapt(result.activity)
+                    semantic_input = self.scenario.event(packet) if self.scenario else result.activity
+                    event = self.adapter.adapt(semantic_input) if semantic_input is not None else None
+                    if semantic_input is not None:
+                        self.health["Activity Adapter"] = "OK"
                     if event is not None:
                         if (event.frame_id, event.timestamp_s, event.metadata.get("source_id"), event.metadata.get("session_id")) != (packet.frame_id, packet.timestamp_s, packet.source_id, packet.session_id):
                             raise FrameSyncError("semantic adapter changed frame identity")
@@ -226,11 +275,9 @@ class FullSystemRuntime:
                     self.timings.append(elapsed_ms)
                     for name, value in {**result.timings_ms, "module06_ms": tracked.processing_time_ms}.items():
                         self.stage_totals[name] = self.stage_totals.get(name, 0.) + value
-                    self._status(packet, result, tracked)
                     if self.consumer.last_dispatch_errors:
                         self.health_errors["Voice"] = "; ".join(self.consumer.last_dispatch_errors)
-                    payload = self._snapshot(packet, result, tracked, decision)
-                    self.latest_snapshot = payload
+                        self.health["Voice"] = "DEGRADED"
                     display = None
                     if self.gui or self.recorder or self.stream:
                         display = render_overlay(packet.image, tracked, result.upstream.objects,
@@ -249,11 +296,15 @@ class FullSystemRuntime:
                         self._optional("Recording", lambda: self.recorder.submit(display, packet))
                     if self.stream and self.health["Streaming"] != "DEGRADED":
                         self._optional("Streaming", lambda: self.stream.submit(display))
+                    # Output submission may fail on this frame; publish its resulting health.
+                    self._status(packet, result, tracked)
+                    payload = self._snapshot(packet, result, tracked, decision)
+                    self.latest_snapshot = payload
+                    last_frame = (packet, result, tracked, decision, display)
                     if self.gui:
-                        self._optional("GUI", lambda: self.gui.push_frame(display))
                         now = perf_counter()
                         if now - self._last_gui >= .1 or (event is not None and decision.should_display):
-                            self._optional("GUI", lambda: self.gui.push_snapshot(payload))
+                            self._publish_gui(display, payload)
                             self._last_gui = now
                     if self.diagnostics:
                         self._optional("Diagnostics", lambda: self.diagnostics({"frame_id": packet.frame_id,
@@ -277,10 +328,13 @@ class FullSystemRuntime:
         except Exception as exc:
             self.error = f"{type(exc).__name__}: {exc}"
             self.exit_reason = "error"
+            self.health["Runtime"] = "ERROR"
             self.log.emit({"event": "system_error", "reason": self.error})
             LOGGER.error(self.error)
         finally:
             self.close()
+            if last_frame:
+                self._status(*last_frame[:3])
             duration = perf_counter() - started
             summary = {"event": "system_stopped", "frames": self.frames, "exit_reason": self.exit_reason,
                        "error": self.error, "procedure_state": self.fsm.state.value,
@@ -294,6 +348,16 @@ class FullSystemRuntime:
                        "recording_drops": self.recorder.dropped if self.recorder else 0}
             self.log.emit(summary)
             self.log.close()
+            if last_frame:
+                packet, result, tracked, decision, display = last_frame
+                self._status(packet, result, tracked)
+                self.latest_snapshot = self._snapshot(packet, result, tracked, decision)
+                if self.gui:
+                    self._publish_gui(display, self.latest_snapshot)
+            elif self.gui and self.error:
+                self._publish_gui(None, {"status_level": "warning", "status_text": self.error,
+                    "voice_on": False, "system_health": dict(self.health), "log_path": str(self.log.path),
+                    "alerts": [{"t": "", "level": "warning", "text": self.error}]})
         return summary
 
     def close(self):
@@ -306,7 +370,6 @@ class FullSystemRuntime:
                     self.health["Voice_before_shutdown"] = resource.status
                 self._optional(name, resource.close)
                 if getattr(resource, "error", None):
-                    self.health[name] = "DEGRADED"
-                    self.health_errors[name] = resource.error
+                    self._degrade(name, resource.error)
                 if name == "Voice":
                     self.health[name] = "STOPPED" if name not in self.health_errors and self.health["Voice_before_shutdown"] not in ("VOICE_ERROR", "VOICE_UNAVAILABLE") else "DEGRADED"

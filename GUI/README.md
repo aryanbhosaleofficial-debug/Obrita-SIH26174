@@ -3,9 +3,25 @@
 Offline PySide6 console for the BAS experiment monitor. One codebase, two uses:
 
 1. **Standalone demo** – runs with built-in *sample* data, no pipeline modules.
-2. **Embeddable module** – `ConsoleWidget` + `PipelineBridge` that your pipeline feeds.
+2. **Production runtime view** – `scripts/run_full_pipeline.py` → `integration.full_cli`
+   → `FullSystemRuntime` → existing `PipelineBridge` → existing `ConsoleWidget`.
 
-Demo build, not flight software. All numbers in the demo (confidences, times, log lines,
+From the repository root, run the full pipeline (PowerShell):
+
+```powershell
+python scripts/run_full_pipeline.py --synthetic --scenario recovery --gui
+# Automated full-runtime screenshot:
+$env:QT_QPA_PLATFORM = 'offscreen'
+python scripts/run_full_pipeline.py --synthetic --scenario recovery --gui --gui-shot outputs/debug_frames/gui-integration.png
+```
+
+Synthetic mode substitutes inference backends and, for named box scenarios, semantic
+events. Modules 01–06, identity checks, FSM, recovery and outputs still execute through
+the authoritative runtime. It does not demonstrate trained recognition accuracy.
+The separate `run_demo.py` uses placeholder GUI data only. Production does not import
+or instantiate `MockProvider`; demo exports remain available by lazy import.
+
+Demo build, not flight software. All numbers in the standalone GUI demo (confidences, times, log lines,
 step names) are placeholders. Accuracy, FPS and per-module timing are **not measured**.
 
 ## Run
@@ -42,24 +58,46 @@ bridge = PipelineBridge(); bridge.attach(console)
 bridge.voice_toggled.connect(my_pipeline.set_voice)  # GUI -> pipeline
 
 # in the pipeline thread, every frame / every FSM change:
-bridge.push_frame(bgr_frame)                          # ndarray from OpenCV
-bridge.push_snapshot(snapshot_or_dict)                # see dict keys below
+bridge.push_update(bgr_frame, snapshot_or_dict)        # paired frame + state, production API
 ```
 Run the Qt event loop in the main thread and the pipeline in a worker thread. Only the
-newest frame is kept, so a slow GUI never slows capture.
+newest frame/state pair is kept, with at most one queued wakeup. Separate
+`push_frame` / `push_snapshot` methods remain available for existing embedding/demo
+clients, also with bounded slots. Use `push_update` to preserve production identity.
+The runtime publishes about ten updates/second plus meaningful FSM decisions and
+the final shutdown state. Dropped display updates do not change the session log.
 
 ### Snapshot dict contract
 Missing keys fall back to defaults. Keys: `status_level` (nominal|caution|warning), `status_text`,
 `spoken`, `met_seconds`, `stamp`, `steps` [{id,text,state(done|active|pending|skipped|wrong),time}],
-`next_step` {number,head,text,note,progress 0..1,progress_label}, `readings` [{name,x,y,aspect,conf}],
+`next_step` {number,head,text,note,confidence,progress 0..1,progress_label}, `readings` [{name,x,y,aspect,conf}],
 `chain` [{stage,module,note,status}], `alerts` [{t,level,text}], `log` [{t,level,event,detail,conf}] (oldest first),
-`log_path`, `scene` {simulated,rotation,main_box,objects,hands}, `recording`, `lan_streaming`,
+`log_path`, `scene` {simulated,overlays_rendered,rotation,main_box,objects,hands}, `recording`, `lan_streaming`,
 `local_only`, `voice_on`, `footer`.
 Detections use normalised frame coordinates (`cx, cy, w, h` in 0..1). Set `scene.simulated=False`
 when you push real frames so the demo scene is not drawn.
 
-**Assumption:** the real `core/contracts.py` status object was not available when this was
-written, so the mapping is the dict above. Adapt `snapshot_from_dict` to your dataclass if needed.
+Additional flat fields: `frame_id`, `timestamp_s`, `source_id`, `session_id`,
+`procedure_state`, `current_step_id`, `decision`, `recovery_action`, `system_health`.
+These retain identity and procedure context without coupling widgets to module dataclasses.
+`latest_decision` and deep `tracking` payloads remain diagnostics-only; the GUI already
+renders their guidance, confidence, scene, rack readings and health. Use `--diagnostics`
+for detailed module analysis. Unknown fields, including nested future fields, are ignored.
+
+Missing confidence displays `—`. Recovery guidance takes precedence over the normal
+instruction. Terminal procedures have no next-step ID. Required missing steps retain
+the FSM's retry/wrong state; only an explicitly optional step can be `skipped`.
+No source frame means an empty camera pane, with no simulated rack geometry.
+
+Health comes from each module's packet and actual output state. The header distinguishes
+waiting/off/degraded recording and streaming. `spoken` comes only from the authoritative
+`audio_playback_started` log event, never queue acceptance. The event log is a bounded
+view of the same session log and displays its path; the GUI writes no separate audit log.
+
+Space pauses, C resumes, R resets/starts, A aborts, Q/Esc close. Voice controls cross
+`PipelineBridge.voice_toggled` and the runtime control queue. The worker alone owns the
+FSM. Invalid lifecycle commands are rejected in the session log. Close signals shutdown;
+EOF and worker/setup errors close predictably after final queued delivery.
 
 ## Design rules kept in code
 - Voice alerts come from the FSM only; the GUI just shows what was spoken.

@@ -42,10 +42,13 @@ def gui_snapshot(decision: GuidanceDecision) -> dict:
         "stamp": stamp, "spoken": "",  # speech request is not proof of playback
         "steps": [{"id": s.step_id, "text": s.instruction, "state": states[s.state]} for s in decision.step_states],
         "next_step": {"number": decision.next_step_id or "", "head": decision.procedure_state.value.replace("_", " ").title(),
-                      "text": decision.next_instruction or decision.message,
-                      "note": decision.recovery_action.value if decision.recovery_action else "",
+                      "text": decision.message if decision.recovery_action else decision.next_instruction or decision.message,
+                      "note": ((decision.recovery_action.value + ": " + (decision.next_instruction or ""))
+                               if decision.recovery_action else ""),
+                      "confidence": decision.confidence,
                       "progress": done / total if total else 0., "progress_label": f"{done}/{total} steps resolved"},
-        "alerts": ([{"t": stamp, "level": level, "text": decision.message}] if level != "nominal" else []),
+        "alerts": ([{"t": stamp, "level": level if level != "nominal" else "advisory", "text": decision.message}]
+                   if level != "nominal" or decision.procedure_state == ProcedureState.COMPLETED else []),
         "chain": [{"stage": "Procedure", "module": "FSM", "note": f"{decision.observed_action or '-'}: {decision.decision.value}",
                    "status": decision.procedure_state.value}],
         "scene": {"simulated": decision.metadata.get("upstream", {}).get("synthetic") is True}, "local_only": True,

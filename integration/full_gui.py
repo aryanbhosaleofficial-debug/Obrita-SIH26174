@@ -19,6 +19,7 @@ def run_gui(build_runtime, args):
     stop, controls = Event(), Queue()
     bridge.voice_toggled.connect(lambda enabled: controls.put(("voice", enabled)))
     window.closed.connect(stop.set)
+    window.closed.connect(app.quit)
     shortcuts = []
     for key, command in (("Space", "pause"), ("C", "resume"), ("R", "reset"), ("A", "abort")):
         shortcut = QShortcut(QKeySequence(key), window)
@@ -36,9 +37,16 @@ def run_gui(build_runtime, args):
     def finished(summary):
         # EOF/fatal error exits predictably after queued bridge delivery.
         def finish_window():
-            if args.gui_shot:
-                window.grab().save(str(args.gui_shot))
-            window.close()
+            try:
+                if args.gui_shot:
+                    args.gui_shot.parent.mkdir(parents=True, exist_ok=True)
+                    if not window.grab().save(str(args.gui_shot)):
+                        raise OSError(f"GUI screenshot could not be saved: {args.gui_shot}")
+            except OSError as exc:
+                summary["error"] = str(exc)
+                summary["exit_reason"] = "error"
+            finally:
+                window.close()
         QTimer.singleShot(150, finish_window)
     signals.finished.connect(finished, Qt.QueuedConnection)
 
@@ -49,6 +57,9 @@ def run_gui(build_runtime, args):
                 summary = runtime.run(frames, max_frames=args.max_frames)
         except Exception as exc:
             summary = {"error": f"{type(exc).__name__}: {exc}", "exit_reason": "error", "frames": 0}
+            bridge.push_snapshot({"status_level": "warning", "status_text": summary["error"],
+                "voice_on": False, "alerts": [{"t": "", "level": "warning", "text": summary["error"]}],
+                "system_health": {"Runtime": "ERROR"}})
         result.append(summary)  # retain summary even if GUI closes before signal delivery
         signals.finished.emit(summary)
     thread = Thread(target=worker, name="full-system-inference", daemon=False)

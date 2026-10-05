@@ -172,11 +172,18 @@ physical undo. The frozen FSM's conservative defaults remain intact.
 ## GUI, controls and threading
 
 The Qt main thread owns widgets. Capture/inference runs in one application
-worker; `PipelineBridge` delivers queued signals and a latest-frame image slot.
+worker; `PipelineBridge.push_update` delivers a paired image/snapshot through one
+latest slot and at most one queued Qt wakeup. Frame ID, timestamp, source and session
+are retained in the GUI's flat snapshot. A slow GUI drops complete display pairs;
+it cannot accumulate snapshots or paint a newer frame beside older FSM state.
 Snapshots refresh at approximately ten requests/second, with immediate meaningful
 decisions. They contain procedure state/instruction/progress, observed activity,
 decision/recovery, guidance, confidence, health, rack readings, logs and actual
-playback status. Existing console sections display those fields.
+playback status. Existing console sections display those fields. The final update
+includes shutdown health, output failures and the authoritative `system_stopped` log.
+Modules 01 and 04 have explicit health rows. `system_health` is exposed for header
+status; deep `tracking` and `latest_decision` remain diagnostics-only (their visible
+guidance/scene/readings/confidence are already mapped). Production imports no GUI mock.
 
 The integrated BGR frame already contains object/body/hand overlays and physical
 rack axes. `Scene.overlays_rendered` prevents the GUI painting its default demo
@@ -189,6 +196,16 @@ The existing voice toggle mutes/cancels voice output. Recovery requiring restart
 still requires reset; resume is operator acknowledgment, not a physical undo.
 Capture driver calls may block natively; worker shutdown reports a timeout if a
 driver does not return. Live camera shutdown still needs hardware acceptance.
+
+LAN JPEG encoding runs in a dedicated worker with one newest image slot. The HTTP
+server/client threads remain isolated, and encoding/server errors become degraded
+runtime output status. Recorder, stream and voice failures appear in Alerts and health;
+recording/streaming header flags cannot remain healthy after failure or shutdown.
+
+Regression coverage in `tests/test_full_system_gui.py` observes the real production
+runner at Qt widgets: scenario decisions, paired pixels/identity, bounded bursts,
+Qt thread ownership, EOF, Q/Esc close, controls, voice acceptance versus playback,
+worker errors, output degradation and actual optional-step skip rendering.
 
 For an automated Windows GUI check:
 

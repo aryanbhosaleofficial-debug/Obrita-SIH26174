@@ -61,17 +61,23 @@ def test_existing_alert_manager_worker_dispatches_and_closes_without_hardware(tm
     args = options(["--synthetic", "--scenario", "wrong-order", "--log", str(tmp_path / "events.jsonl")])
     system, frames, resources = build_runtime(args)
     records, tts = [], FastTTS()
-    voice = VoiceOutput(system.fsm.definition, VoiceConfig(), emit=records.append, tts=tts, player=TestPlayback())
+    def emit(record):
+        records.append(record)
+        system.log.emit(record)
+    voice = VoiceOutput(system.fsm.definition, VoiceConfig(), emit=emit, tts=tts, player=TestPlayback())
     deadline = monotonic() + 3
     while voice.status == "WARMING" and monotonic() < deadline:
         sleep(.01)
     assert voice.status == "READY"
     system.voice = voice
     system.consumer.alert_sink = system._alert
+    system.realtime_fps = 200.
     with resources:
         result = system.run(frames)
     assert not result["error"]
     assert any(r["event"] == "alert_queued" for r in records)
+    playback = [r for r in records if r["event"] == "audio_playback_started"]
+    assert playback and system.latest_snapshot["spoken"] == playback[-1]["message"]
     assert not voice.manager._thread.is_alive() and tts.closed
 
 
@@ -88,6 +94,8 @@ def test_tts_failure_degrades_without_breaking_procedure(tmp_path):
         summary = system.run(frames)
     assert summary["procedure_state"] == "completed" and not summary["error"]
     assert any(r.get("event") == "voice_unavailable" for r in system.log.records)
+    assert summary["health"]["Voice"] == "DEGRADED"
+    assert not system.latest_snapshot["spoken"]
 
 
 def test_logger_constructor_failure_falls_back_to_memory(tmp_path):
@@ -132,3 +140,53 @@ def test_log_snapshot_is_detached_and_safe_during_voice_thread_writes():
     assert not worker.is_alive()
     assert log.snapshot()[-1]["index"] == 999
     log.close()
+
+
+def test_stream_encoding_is_bounded_and_does_not_block_submit(monkeypatch):
+    from threading import Event
+    entered, release = Event(), Event()
+    original = cv2.imencode
+    def slow(*args):
+        entered.set()
+        assert release.wait(3)
+        return original(*args)
+    monkeypatch.setattr(cv2, "imencode", slow)
+    stream = LocalStream(port=0)
+    try:
+        stream.submit(np.zeros((2, 2, 3), np.uint8))
+        assert entered.wait(2)
+        for i in range(100):
+            stream.submit(np.full((2, 2, 3), i, np.uint8))
+        assert stream.pending.shape == (2, 2, 3)
+        assert stream.pending[0, 0, 0] == 99
+    finally:
+        release.set()
+        stream.close()
+    assert not stream.encoder.is_alive() and not stream.thread.is_alive()
+
+
+def test_async_stream_encoding_failure_degrades_runtime(monkeypatch, tmp_path):
+    monkeypatch.setattr(cv2, "imencode", lambda *args: (False, None))
+    args = options(["--synthetic", "--stream", "--stream-port", "0", "--log", str(tmp_path / "events.jsonl")])
+    system, frames, resources = build_runtime(args)
+    system.realtime_fps = 200.
+    with resources:
+        summary = system.run(frames)
+    assert summary["procedure_state"] == "completed" and not summary["error"]
+    assert summary["health"]["Streaming"] == "DEGRADED"
+    assert not system.latest_snapshot["lan_streaming"]
+    assert any(r.get("output") == "Streaming" for r in system.log.records)
+
+
+def test_real_recorder_failure_degrades_runtime(tmp_path):
+    path = tmp_path / "occupied.avi"
+    path.mkdir()
+    args = options(["--synthetic", "--record", str(path), "--log", str(tmp_path / "events.jsonl")])
+    system, frames, resources = build_runtime(args)
+    system.realtime_fps = 200.
+    with resources:
+        summary = system.run(frames)
+    assert summary["procedure_state"] == "completed" and not summary["error"]
+    assert summary["health"]["Recording"] == "DEGRADED"
+    assert not system.latest_snapshot["recording"]
+    assert any(r.get("output") == "Recording" for r in system.log.records)

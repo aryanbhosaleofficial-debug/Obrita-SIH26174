@@ -44,6 +44,25 @@ def test_full_gui_offscreen_updates_and_worker_exits(tmp_path):
     assert json.loads(result.stdout)["procedure_state"] == "completed"
 
 
+@pytest.mark.parametrize("failure", ["setup", "screenshot"])
+def test_full_gui_setup_and_screenshot_errors_exit_cleanly(tmp_path, failure):
+    pytest.importorskip("PySide6")
+    if failure == "setup":
+        arguments = ["--source", "0", "--model", str(tmp_path / "missing.pt")]
+    else:
+        occupied = tmp_path / "occupied"
+        occupied.write_text("cannot be a directory")
+        arguments = ["--synthetic", "--gui-shot", str(occupied / "shot.png")]
+    result = subprocess.run([sys.executable, str(ROOT / "scripts/run_full_pipeline.py"),
+        "--gui", "--log", str(tmp_path / "events.jsonl"), *arguments],
+        cwd=tmp_path, env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True, text=True, timeout=15)
+    assert result.returncode == 2, result.stderr
+    summary = json.loads(result.stdout)
+    assert summary["exit_reason"] == "error" and summary["error"]
+    assert summary["frames"] == 0
+
+
 def test_offline_verifier_runs_complete_logic_and_recording(tmp_path):
     result = subprocess.run([sys.executable, str(ROOT / "scripts/verify_full_system_offline.py"),
         "--synthetic", "--scenario", "recovery", "--no-gui", "--record", str(tmp_path / "offline.avi"),

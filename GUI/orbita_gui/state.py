@@ -37,7 +37,7 @@ class Detection:
 class Hand:
     tip: tuple[float, float]
     wrist: tuple[float, float]
-    conf: float = 0.0
+    conf: Optional[float] = None
 
 
 @dataclass
@@ -82,12 +82,13 @@ class NextStep:
     note: str = ""
     progress: float = 0.0            # 0..1
     progress_label: str = ""
+    confidence: Optional[float] = None
 
 
 @dataclass
 class Scene:
     """Overlay geometry. `simulated=True` makes the camera widget paint the demo rack scene."""
-    simulated: bool = True
+    simulated: bool = False
     overlays_rendered: bool = False  # integration frame already contains source-coordinate overlays
     rotation: int = 0                # setup rotation in degrees (demo scene only)
     main_box: Optional[Detection] = None
@@ -118,6 +119,15 @@ class Snapshot:
     local_only: bool = True
     voice_on: bool = True
     footer: str = ""
+    frame_id: Optional[int] = None
+    timestamp_s: Optional[float] = None
+    source_id: Optional[str] = None
+    session_id: Optional[str] = None
+    procedure_state: str = "not_started"
+    current_step_id: Optional[str] = None
+    decision: str = ""
+    recovery_action: Optional[str] = None
+    system_health: dict[str, str] = field(default_factory=dict)
 
 
 def fmt_met(seconds: float) -> str:

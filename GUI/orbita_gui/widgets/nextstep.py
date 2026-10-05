@@ -52,6 +52,7 @@ class NextStepBlock(QFrame):
         self.num.setText(n.number)
         self.text.setText(n.text)
         self.note.setText(n.note)
-        self.confirm.setText(n.progress_label)
+        confidence = "—" if n.confidence is None else f"{n.confidence:.2f}"
+        self.confirm.setText(f"{n.progress_label} · confidence {confidence}")
         self.bar.value = n.progress
         self.bar.update()

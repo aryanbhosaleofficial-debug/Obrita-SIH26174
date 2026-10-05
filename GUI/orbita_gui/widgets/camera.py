@@ -70,9 +70,11 @@ class CameraView(QWidget):
         self._placed = []
         if real:
             self._draw_frame(p, r)
-        else:
+        elif self.scene.simulated:
             self._draw_sim(p, r)
-        if not self.scene.overlays_rendered:
+        else:
+            p.fillRect(r, T.qc("#101418"))
+        if not self.scene.overlays_rendered and (real or self.scene.simulated):
             self._draw_overlay(p, r, real)
         self._draw_finish(p, r)
         self._draw_hud(p, r)
@@ -200,7 +202,8 @@ class CameraView(QWidget):
             p.setPen(QPen(T.qc(T.INK), 1.5))
             p.drawEllipse(tip, 5.5, 5.5)
             p.drawEllipse(wr, 4.5, 4.5)
-            self._tab(p, f"hand {h.conf:.2f}", wr.x() - 20, wr.y() + 10)
+            conf = "—" if h.conf is None else f"{h.conf:.2f}"
+            self._tab(p, f"hand {conf}", wr.x() - 20, wr.y() + 10)
 
     @staticmethod
     def _arrow(p: QPainter, a: QPointF, b: QPointF):
@@ -248,7 +251,7 @@ class CameraView(QWidget):
         p.drawLine(QPointF(ax, y0 + 4), QPointF(ax - 4, y0 + 9))
         p.drawLine(QPointF(ax, y0 + 4), QPointF(ax + 4, y0 + 9))
         yb = r.bottom() - 42
-        if self.frame is None:
+        if self.frame is None and self.scene.simulated:
             self._hud(p, f"Setup rotation {self.scene.rotation % 360}°", x0, yb)
         self._hud(p, f"{self.n_objects} objects · {self.n_hands} hand{'s' if self.n_hands != 1 else ''}",
                   r.right() - 34, yb, right=True)

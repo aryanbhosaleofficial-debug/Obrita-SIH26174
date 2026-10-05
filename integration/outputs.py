@@ -3,7 +3,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from queue import Queue, Full
-from threading import Event, Lock, Thread, BoundedSemaphore
+from threading import Event, Lock, Thread, BoundedSemaphore, Condition
 from time import monotonic
 
 import cv2
@@ -129,6 +129,8 @@ class LocalStream:
     """
     def __init__(self, host="127.0.0.1", port=8080):
         self.lock, self.stop = Lock(), Event()
+        self.condition = Condition(self.lock)
+        self.pending = None
         self.clients = BoundedSemaphore(4)
         self.jpeg = None
         self.error = None
@@ -146,7 +148,8 @@ class LocalStream:
                     return
                 try:
                     self.connection.settimeout(2.)
-                    with owner.lock:
+                    with owner.condition:
+                        owner.condition.wait_for(lambda: owner.jpeg is not None or owner.error or owner.stop.is_set(), timeout=.5)
                         jpeg = owner.jpeg
                     if jpeg is None:
                         self.send_error(503, "waiting for first frame")
@@ -174,24 +177,59 @@ class LocalStream:
         self.server.daemon_threads = True
         address = self.server.server_address
         self.url = f"http://{address[0]}:{address[1]}/stream"
-        self.thread = Thread(target=lambda: self.server.serve_forever(poll_interval=.1),
+        self.thread = Thread(target=self._serve,
                              name="full-system-stream", daemon=True)
+        self.encoder = Thread(target=self._encode, name="full-system-stream-encoder", daemon=True)
         self.thread.start()
+        self.encoder.start()
+
+    def _serve(self):
+        try:
+            self.server.serve_forever(poll_interval=.1)
+        except Exception as exc:
+            self.error = f"stream server: {type(exc).__name__}: {exc}"
+
+    def _encode(self):
+        try:
+            while not self.stop.is_set():
+                with self.condition:
+                    self.condition.wait_for(lambda: self.pending is not None or self.stop.is_set())
+                    if self.stop.is_set():
+                        return
+                    image, self.pending = self.pending, None
+                ok, data = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if not ok:
+                    raise OSError("stream JPEG encoding failed")
+                with self.condition:
+                    self.jpeg = data.tobytes()
+                    self.condition.notify_all()
+        except Exception as exc:
+            with self.condition:
+                self.error = f"{type(exc).__name__}: {exc}"
+                self.condition.notify_all()
 
     def submit(self, image):
-        ok, data = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        if not ok:
-            raise OSError("stream JPEG encoding failed")
-        with self.lock:
-            self.jpeg = data.tobytes()
+        if self.error:
+            raise OSError(self.error)
+        if self.stop.is_set():
+            return
+        with self.condition:
+            self.pending = image.copy()  # one latest slot, replaced while encoder is busy
+            self.condition.notify_all()
 
     def close(self):
         if self.stop.is_set():
             return
         self.stop.set()
+        with self.condition:
+            self.pending = None
+            self.condition.notify_all()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=3.)
+        self.encoder.join(timeout=3.)
+        if self.thread.is_alive() or self.encoder.is_alive():
+            self.error = self.error or "stream shutdown timeout"
 
 
 class VoiceOutput:

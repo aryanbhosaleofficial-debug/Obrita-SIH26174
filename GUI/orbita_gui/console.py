@@ -1,5 +1,6 @@
 """ConsoleWidget: the whole ORBITA screen as one embeddable QWidget."""
 from __future__ import annotations
+from pathlib import Path
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QSizePolicy)
@@ -95,8 +96,8 @@ class ConsoleWidget(QWidget):
                                Column("Conf.", 70, align="right", mono=True)], row_h=30)
         left.addWidget(Panel("Position in the rack frame", self.readings, "unaffected by setup rotation"))
 
-        self.chain = Table([Column("Stage", 80, bold=True), Column("Module", flex=1.0, mono=True),
-                            Column("Note", flex=1.6), Column("Status", 60, align="right", bold=True)],
+        self.chain = Table([Column("Stage", 96, bold=True), Column("Module", flex=1.0, mono=True),
+                            Column("Note", flex=1.6), Column("Status", 104, align="right", bold=True)],
                            row_h=30)
         left.addWidget(Panel("Processing chain", self.chain))
 
@@ -122,6 +123,8 @@ class ConsoleWidget(QWidget):
         bv.addStretch(1)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
+        self.snapshot = Snapshot(voice_on=False)
+        self.update_snapshot(self.snapshot)
 
     # ---------------------------------------------------------------- public API
     @Slot(QImage)
@@ -135,19 +138,31 @@ class ConsoleWidget(QWidget):
 
     @Slot(object)
     def update_snapshot(self, s: Snapshot):
+        self.snapshot = s
         self.header.apply(s.local_only, s.recording, s.lan_streaming, s.voice_on, s.met_seconds)
+        for chip, name, enabled in ((self.header.rec, "Recording", s.recording),
+                                    (self.header.lan, "Streaming", s.lan_streaming)):
+            status = s.system_health.get(name)
+            if status and status != "OK":
+                chip.set(f"{name}: {status}", enabled)
+        self.header.voice.setToolTip(f"Voice: {s.system_health.get('Voice', 'OFF')}")
         self.status.apply(s.status_level, s.status_text, s.spoken)
         self.camera.set_scene(s.scene, s.stamp)
+        if s.source_id:
+            self.camera.cam_label = s.source_id
+            self.cam_panel.title.setText("SOURCE")
+            self.cam_panel.title.setToolTip(s.source_id)
         self.next.apply(s.next_step)
         self.proc.set_steps(s.steps)
-        self.proc_panel.set_right(f"{sum(1 for x in s.steps if x.state == 'done')} of {len(s.steps)} complete")
+        self.proc_panel.set_right(f"{s.procedure_state.replace('_', ' ')} · {sum(1 for x in s.steps if x.state == 'done')} of {len(s.steps)} complete")
         self.readings.set_rows([[r.name, _f(r.x), _f(r.y), _f(r.aspect), _f(r.conf)] for r in s.readings])
         self.chain.set_rows([[c.stage, c.module, c.note, c.status] for c in s.chain])
         self.alerts.set_rows([[a.t, Cell(a.level.capitalize(), LEVEL_TEXT.get(a.level), marker=LEVEL_MARK.get(a.level)),
                                a.text] for a in reversed(s.alerts)])
         self.log.set_rows([[e.t, Cell(e.level, LEVEL_TEXT.get(e.level), marker=LEVEL_MARK.get(e.level)),
                             e.event, e.detail, _f(e.conf)] for e in reversed(s.log)])
-        self.log_panel.set_right(s.log_path)
+        self.log_panel.set_right(Path(s.log_path).name if s.log_path else "")
+        self.log_panel.right.setToolTip(s.log_path)
         self.footer.setText(s.footer)
 
 
