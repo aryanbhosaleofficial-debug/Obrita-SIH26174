@@ -1,4 +1,4 @@
-"""2D geometric evidence only; overlap does not establish physical contact."""
+"""2D geometric evidence only; overlap does not establish physical contact. """
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Optional body-pose extension point; no pose model loaded by default."""
+"""Optional body-pose extension point; no pose model loaded by default. """
 
 from typing import Protocol
 

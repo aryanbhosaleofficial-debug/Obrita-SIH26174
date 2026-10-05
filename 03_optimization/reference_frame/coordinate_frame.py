@@ -1,4 +1,4 @@
-"""Replaceable rack calibration; never infer physical up from the camera."""
+"""Replaceable rack calibration; never infer physical up from the camera. """
 
 from __future__ import annotations
 

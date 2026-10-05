@@ -1,4 +1,4 @@
-"""Generic candidate generation; confirmation happens in the stabilizer."""
+"""Generic candidate generation; confirmation happens in the stabilizer. """
 
 from shared.schemas.observations import (
     CoordinateFrame,
