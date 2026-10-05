@@ -6,6 +6,7 @@ __pycache__/
 
 # Virtual environments / secrets
 .venv/
+.venv-new/
 venv/
 .env
 
@@ -37,3 +38,7 @@ data/videos/*
 *.engine
 *.task
 *.tflite
+
+# Local recovery ZIP and generated pytest artifacts stay outside source history.
+/Obrita-SIH26174-main.zip
+/tests_tmp/

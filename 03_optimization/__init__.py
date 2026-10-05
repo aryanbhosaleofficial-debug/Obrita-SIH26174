@@ -10,3 +10,19 @@ Note:
     documented in the root README.md. Do not add imports such as
     `from 02_yolo import ...`.
 """
+
+
+def __getattr__(name):
+    """Retain historical exports by delegating to the canonical owner API."""
+    if name in ("OptimizationPipeline", "OptimizationSequencePipeline"):
+        from optimization.pipeline import OptimizationPipeline
+
+        return OptimizationPipeline
+    if name == "OptimizationSequence":
+        from optimization.optimizer import OptimizationSequence
+
+        return OptimizationSequence
+    raise AttributeError(name)
+
+
+__all__ = ["OptimizationPipeline", "OptimizationSequencePipeline", "OptimizationSequence"]

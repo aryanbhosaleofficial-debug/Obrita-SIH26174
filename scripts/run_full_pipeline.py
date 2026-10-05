@@ -12,6 +12,8 @@ import argparse
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from procedure.fsm import ProcedureFSM, StepOutcome
 from procedure.procedure_loader import load_procedure
 from shared.schemas.activity_event import ActivityEvent
@@ -49,11 +51,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     definition = load_procedure(procedure_path, config_dir)
-    fsm = ProcedureFSM(steps=[step.__dict__ for step in definition.steps])
+    fsm = ProcedureFSM(steps=[step.as_dict() for step in definition.steps])
 
     print(f"Loaded experiment: {definition.experiment_name} ({definition.experiment_id})")
     for index, step in enumerate(definition.steps, start=1):
-        event = _build_demo_event(step.__dict__, index)
+        event = _build_demo_event(step.as_dict(), index)
         outcome, next_step = fsm.on_event(event)
         print(f"step {index}: {step.step_id} -> {outcome.value}")
         if next_step is not None:

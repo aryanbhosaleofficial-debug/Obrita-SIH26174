@@ -55,6 +55,7 @@ activities:
   labels:
     - unknown
     - PLACEHOLDER_ACTIVITY
+    - PLACEHOLDER_ACTIVITY_2
 
 output:
   events_dir: outputs/events

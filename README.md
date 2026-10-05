@@ -100,7 +100,7 @@ External Camera / Frame Source -> FramePacket (source preserved)
                                (current observations + stable evidence + bounded window)
   -> 04 BoundaryPipeline.process_optimization(packet, source_frame) -> BoundaryOutputPacket
   -> 05 HAR / Perception Fusion [scaffold] -> ActivityEvent
-  -> Procedure FSM [scaffold]
+  -> Procedure FSM [implemented; synthetic event demo]
 ```
 
 `integration.chain.PerceptionChain` composes 01–03. The runnable example calls

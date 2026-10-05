@@ -82,14 +82,16 @@ def detect_hands(frame: np.ndarray):
 
 
 @st.cache_resource
-def object_detector():
-    if YOLO is None:
+def object_detector(model_path: str):
+    # Guard Ultralytics' auto-download with an existing local file.
+    local_path = Path(model_path).expanduser()
+    if YOLO is None or not model_path or not local_path.is_file():
         return None
-    return YOLO("yolo11n.pt")
+    return YOLO(str(local_path.resolve()))
 
 
-def detect_people_and_objects(frame: np.ndarray):
-    model = object_detector()
+def detect_people_and_objects(frame: np.ndarray, model_path: str):
+    model = object_detector(model_path)
     if model is None:
         return [], None
     result = model.predict(frame, conf=0.35, imgsz=640, verbose=False, device="cpu")[0]
@@ -113,7 +115,7 @@ def release_camera() -> None:
 
 
 @st.fragment(run_every=0.5)
-def live_camera_demo(method_name: str, min_area: int, roi_padding: int, target_roi: dict[str, float], automatic_hands: bool, automatic_objects: bool) -> None:
+def live_camera_demo(method_name: str, min_area: int, roi_padding: int, target_roi: dict[str, float], automatic_hands: bool, automatic_objects: bool, model_path: str) -> None:
     """Refresh and analyze one camera frame every 0.5 seconds."""
     capture = st.session_state.get("camera_capture")
     if capture is None or not st.session_state.get("camera_active", False):
@@ -131,8 +133,10 @@ def live_camera_demo(method_name: str, min_area: int, roi_padding: int, target_r
         st.session_state.live_pipeline = live_pipeline
         st.session_state.live_settings = (method_name, min_area, roi_padding)
     hands, hand_result = detect_hands(camera_frame) if automatic_hands else ([], None)
-    detections, yolo_result = detect_people_and_objects(camera_frame) if automatic_objects else ([], None)
-    active_roi = target_roi
+    detections, yolo_result = detect_people_and_objects(camera_frame, model_path) if automatic_objects else ([], None)
+    height, width = camera_frame.shape[:2]
+    active_roi = {"x": target_roi["x"] * width, "y": target_roi["y"] * height,
+                  "width": target_roi["width"] * width, "height": target_roi["height"] * height}
     hand_data = None
     if hands:
         selected_hand = hands[0]
@@ -148,7 +152,8 @@ def live_camera_demo(method_name: str, min_area: int, roi_padding: int, target_r
     if automatic_objects and target is not None:
         live_packet = live_pipeline.process_detections(camera_frame, frame_id, frame_id / 30.0,
                                                         person_bbox=person["bbox"] if person else None,
-                                                        object_bbox=active_roi, hand_data=hand_data)
+                                                        object_bbox=target["bbox"], hand_data=hand_data,
+                                                        padding=max(roi_padding, int(np.ceil(live_pipeline.config.padding_ratio * max(x2 - x1, y2 - y1)))))
     else:
         live_packet = live_pipeline.process(camera_frame, frame_id, frame_id / 30.0, roi=active_roi, hand_data=hand_data)
     contour = getattr(live_packet, "contour_px", [])
@@ -189,6 +194,8 @@ with st.sidebar:
     if live_mode:
         automatic_hands = st.checkbox("Automatic hand detection", value=True)
         automatic_objects = st.checkbox("YOLO human/object detection", value=True)
+        local_model_path = st.text_input("Local YOLO weights path", value="")
+        st.caption("YOLO requires an existing local weights file; no downloads.")
         st.caption("Set the target ROI around one hand/object. Upstream YOLO boxes can replace these controls.")
         roi_x = st.slider("Target ROI left", 0.0, 0.9, 0.15, 0.01)
         roi_y = st.slider("Target ROI top", 0.0, 0.9, 0.10, 0.01)
@@ -211,6 +218,7 @@ if live_mode:
                 st.session_state.camera_capture = capture
                 st.session_state.camera_active = True
                 st.session_state.camera_frame_id = 0
+                st.session_state.live_pipeline = None
             else:
                 capture.release()
                 st.error("Could not open camera 0. Check that it is connected and not in use.")
@@ -218,7 +226,7 @@ if live_mode:
         if st.button("Stop camera", width="stretch"):
             release_camera()
     st.caption("The camera is processed by the machine running Streamlit. The live view refreshes twice per second.")
-    live_camera_demo(method, threshold, padding, target_roi, automatic_hands, automatic_objects)
+    live_camera_demo(method, threshold, padding, target_roi, automatic_hands, automatic_objects, local_model_path)
     st.stop()
 
 if uploaded is not None:
