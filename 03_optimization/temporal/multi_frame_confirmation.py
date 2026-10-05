@@ -1,17 +1,31 @@
-"""
-Multi-frame confirmation of gestures and interactions.
+"""Consecutive confirmation with latched short-gap tolerance and EMA confidence."""
 
-Implementation status:
-    Scaffold only.
+from dataclasses import dataclass
 
-Input:
-    Debounced labels over the window
 
-Output:
-    Confirmed flag + number of supporting frames
+@dataclass
+class Confirmation:
+    hits: int = 0
+    missing: int = 0
+    confirmed: bool = False
+    score: float | None = None
+    consecutive_seen: int = 0
 
-Owner:
-    Module 03 — Optimization Sequence (Teammate 4: temporal section)
-"""
+    def observe(self, score: float | None, minimum: int, alpha: float) -> None:
+        self.hits += 1
+        self.consecutive_seen += 1
+        self.missing = 0
+        self.confirmed = self.confirmed or self.hits >= minimum
+        if score is not None:
+            self.score = (
+                score
+                if self.score is None
+                else alpha * score + (1 - alpha) * self.score
+            )
 
-# TODO: Implement configurable N-of-M confirmation.
+    def miss(self) -> None:
+        self.missing += 1
+        self.consecutive_seen = 0
+        if not self.confirmed:
+            self.hits = 0
+            self.score = None

@@ -1,18 +1,17 @@
-"""
-Temporal sequence buffer.
+"""A bounded window of immutable, image-free evidence snapshots."""
 
-Implementation status:
-    Scaffold only.
+from collections import deque
 
-Input:
-    Per-frame features
+from shared.schemas.optimization_packet import TemporalFrame
 
-Output:
-    Sliding window of features ordered by frame_id
 
-Owner:
-    Module 03 — Optimization Sequence (Teammate 4: temporal section)
-"""
+class SequenceBuffer:
+    def __init__(self, size: int):
+        self._frames: deque[TemporalFrame] = deque(maxlen=size)
 
-# TODO: Window size from config.
-# TODO: Detect and expose frame_id gaps inside the window.
+    def clear(self) -> None:
+        self._frames.clear()
+
+    def append(self, frame: TemporalFrame) -> tuple[TemporalFrame, ...]:
+        self._frames.append(frame)
+        return tuple(self._frames)

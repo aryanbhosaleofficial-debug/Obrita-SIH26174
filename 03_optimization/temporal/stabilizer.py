@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import deque
 from dataclasses import dataclass, field, replace
 
 from optimization.interaction.associations import box_iou
+from optimization.temporal.multi_frame_confirmation import Confirmation as _Confirmation
 
 from shared.config import InteractionConfig, StabilizationConfig
 from shared.geometry import isotropic_point
@@ -22,30 +24,9 @@ from shared.schemas.observations import (
     MotionState,
     Point2D,
 )
+from shared.schemas.optimization_packet import TemporalDetection
 
-
-@dataclass
-class _Confirmation:
-    hits: int = 0
-    missing: int = 0
-    confirmed: bool = False
-    score: float | None = None
-
-    def observe(self, score: float | None, minimum: int, alpha: float) -> None:
-        self.hits += 1
-        self.missing = 0
-        self.confirmed = self.confirmed or self.hits >= minimum
-        if score is not None:
-            self.score = (
-                score
-                if self.score is None
-                else alpha * score + (1 - alpha) * self.score
-            )
-
-    def miss(self) -> None:
-        self.missing += 1
-        if not self.confirmed:
-            self.hits = 0
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,6 +37,7 @@ class _ObjectState:
     track_id: int | None
     reference_center: Point2D | None = None
     timestamp: float | None = None
+    evidence: TemporalDetection | None = None
 
 
 @dataclass
@@ -81,8 +63,9 @@ class PerceptionStabilizer:
     """Internal spatial continuity is not exposed as a persistent track ID.
 
     Confirmation needs consecutive observations initially; after confirmation a
-    short dropout retains state. Only observations from the CURRENT frame are
-    emitted. Missing counts expire state after max_missing_frames. Ambiguous
+    short dropout retains state. Only CURRENT observations enrich the mutable
+    detection list; snapshot() separately exposes explicitly held evidence.
+    Missing counts expire state after max_missing_frames. Ambiguous
     one-to-many/many-to-one matches start new histories rather than guessing.
     """
 
@@ -91,13 +74,14 @@ class PerceptionStabilizer:
         self.interaction = interaction
         self.reset()
 
-    def reset(self) -> None:
+    def reset(self, *, preserve_counters: bool = False) -> None:
         self._objects: dict[int, _ObjectState] = {}
         self._hands: dict[int, _HandState] = {}
         self._interactions: dict[tuple, _Confirmation] = {}
         self._pairs: dict[tuple[int, int], _PairHistory] = {}
-        self._next_object = getattr(self, "_next_object", 0)
-        self._next_hand = getattr(self, "_next_hand", 0)
+        self._next_object = getattr(self, "_next_object", 0) if preserve_counters else 0
+        self._next_hand = getattr(self, "_next_hand", 0) if preserve_counters else 0
+        self._current_timestamp = None
         self.object_keys: dict[int, int] = {}
         self.hand_keys: dict[int, int] = {}
 
@@ -123,9 +107,23 @@ class PerceptionStabilizer:
         shape: tuple[int, int],
         timestamp: float,
         reference_valid: bool,
+        frame_id: int = 0,
     ) -> None:
         self.object_keys = {}
         self.hand_keys = {}
+        incoming_classes = {
+            d.track_id: (d.class_id, d.class_name)
+            for d in detections
+            if d.track_id is not None
+        }
+        for key, state in list(self._objects.items()):
+            if (
+                state.track_id in incoming_classes
+                and state.evidence is not None
+                and incoming_classes[state.track_id]
+                != (state.class_id, state.evidence.class_name)
+            ):
+                del self._objects[key]
         normalized_boxes = []
         choices: dict[int, list[int]] = {}
         for di, detection in enumerate(detections):
@@ -137,6 +135,10 @@ class PerceptionStabilizer:
                 key
                 for key, state in self._objects.items()
                 if state.class_id == detection.class_id
+                and (
+                    state.evidence is None
+                    or state.evidence.class_name == detection.class_name
+                )
                 and (
                     (
                         detection.track_id is not None
@@ -154,10 +156,20 @@ class PerceptionStabilizer:
             key: sum(key in candidates for candidates in choices.values())
             for key in self._objects
         }
+        # An ambiguous crossing cannot retain an old confirmed ghost alongside
+        # its new tentative states. Retire all affected predecessor identities.
+        ambiguous_keys = {
+            key
+            for candidates in choices.values()
+            if len(candidates) > 1 or any(uses[k] > 1 for k in candidates)
+            for key in candidates
+        }
+        for key in ambiguous_keys:
+            del self._objects[key]
         seen = set()
         for di, detection in enumerate(detections):
             candidates = choices[di]
-            if len(candidates) == 1 and uses[candidates[0]] == 1:
+            if len(candidates) == 1 and candidates[0] not in ambiguous_keys:
                 key = candidates[0]
                 state = self._objects[key]
             else:
@@ -185,7 +197,37 @@ class PerceptionStabilizer:
             )
             detection.is_stable = state.confirmation.confirmed
             detection.duration_frames = state.confirmation.hits
-            # Keep raw detector confidence; EMA is used only on confirmed interactions.
+            # Keep raw confidence in current observations; publish EMA separately.
+            previous = state.evidence
+            state.evidence = TemporalDetection(
+                continuity_key=key,
+                class_id=detection.class_id,
+                class_name=detection.class_name,
+                bbox=detection.bbox,
+                track_id=detection.track_id,
+                identity_persistent=detection.identity_persistent,
+                identity_ambiguous=detection.identity_ambiguous,
+                raw_confidence=detection.confidence,
+                confidence=state.confirmation.score,
+                confirmed=detection.is_stable,
+                observed=True,
+                consecutive_seen=state.confirmation.consecutive_seen,
+                observed_frames=state.confirmation.hits,
+                frames_since_seen=0,
+                first_seen_frame_id=previous.first_seen_frame_id
+                if previous
+                else frame_id,
+                first_seen_timestamp_s=previous.first_seen_timestamp_s
+                if previous
+                else timestamp,
+                last_seen_frame_id=frame_id,
+                last_seen_timestamp_s=timestamp,
+                track_status=detection.track_status,
+                track_quality=detection.track_quality,
+                track_age_frames=detection.track_age_frames,
+            )
+            if detection.is_stable and (previous is None or not previous.confirmed):
+                logger.debug("confirmed object key=%s frame=%s", key, frame_id)
             detection.motion = MotionState.UNKNOWN
             detection.velocity_reference_frame = None
             center = None
@@ -231,6 +273,7 @@ class PerceptionStabilizer:
                     self._objects[key].confirmation.missing
                     > self.config.max_missing_frames
                 ):
+                    logger.debug("expired object key=%s frame=%s", key, frame_id)
                     del self._objects[key]
 
         palms = [isotropic_point(h.palm_center, shape) for h in hands]
@@ -277,6 +320,20 @@ class PerceptionStabilizer:
                 self._hands[key].missing += 1
                 if self._hands[key].missing > self.config.max_missing_frames:
                     del self._hands[key]
+
+    def snapshot(self) -> tuple[TemporalDetection, ...]:
+        """Detached immutable values; no mutable state or pixels escape."""
+        return tuple(
+            replace(
+                state.evidence,
+                observed=state.confirmation.missing == 0,
+                frames_since_seen=state.confirmation.missing,
+                consecutive_seen=state.confirmation.consecutive_seen,
+                observed_frames=state.confirmation.hits,
+            )
+            for _, state in sorted(self._objects.items())
+            if state.evidence is not None
+        )
 
     def update_trends(
         self,
