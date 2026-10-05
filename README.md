@@ -4,8 +4,9 @@
 
 > **Status: Module 01 foundation and the 01→02→03→04 receiving path are implemented.**
 > Module 01 owns shared contracts and frame preparation. YOLO adapters live in 02;
-> hands, calibration and interaction continuity live in 03. Boundary algorithms,
-> HAR, FSM and the wider application remain under their team owners.
+> hands, calibration and interaction continuity live in 03. Module 04 now runs
+> local contours and confirmed STATIONARY/MOVING/CONTACT/SEPARATING evidence.
+> Rack-relative rotation, HAR, FSM and the wider application remain incomplete.
 > See [perception/INTEGRATION.md](perception/INTEGRATION.md) for the single
 > authoritative boundary and [verification evidence](perception/VERIFICATION.md).
 
@@ -27,8 +28,14 @@ python -m optimization.standalone_cli --input detections.jsonl
 ```
 
 See [Module 03 documentation](03_optimization/README.md) for the authoritative
-temporal API, configuration and tests. Module 04's receiver validates this
-evidence; its boundary algorithms remain team-owned scaffolds.
+temporal API, configuration and tests. Module 04 validates this evidence and
+analyzes currently observed stable targets with the original source image.
+See [Module 04 runtime and limitations](04_boundary/README.md) and
+[recovery evidence](04_boundary/MERGE_REPORT.md). Run its independent offline demo:
+
+```bash
+python scripts/run_boundary.py --synthetic --frames 5
+```
 
 ## Project Overview
 
@@ -91,13 +98,16 @@ External Camera / Frame Source -> FramePacket (source preserved)
   -> 02 YoloPipeline -> ObjectFrame
   -> 03 OptimizationPipeline -> OptimizationOutputPacket
                                (current observations + stable evidence + bounded window)
-  -> 04 boundary input validator -> boundary algorithm [scaffold]
+  -> 04 BoundaryPipeline.process_optimization(packet, source_frame) -> BoundaryOutputPacket
   -> 05 HAR / Perception Fusion [scaffold] -> ActivityEvent
   -> Procedure FSM [scaffold]
 ```
 
 `integration.chain.PerceptionChain` composes 01–03. The runnable example calls
-Module 04's actual input validator; it does not claim completed boundary/HAR output.
+Module 04's actual input validator. Module 04's separate runtime and integration
+tests exercise real contour extraction; the example does not yet orchestrate it
+or HAR. Module 04 now confirms supported boundary states; see its
+[targeted repair report](04_boundary/REPAIR_REPORT.md) for tested behavior.
 
 
 ## Module Ownership
@@ -300,13 +310,14 @@ After installation, the system must run without network access.
 
 ## Running Individual Modules
 
-Run from the repository root (each script is currently a placeholder that exits with a non-zero status):
+Run from the repository root. Module 04 has the standalone runner below; some
+other scripts still exit with a non-zero status as placeholders.
 
 ```bash
 python scripts/run_camera.py         # Future external capture application
 python scripts/run_yolo.py           # Modules 01-02
 python scripts/run_optimization.py   # Modules 01-03
-python scripts/run_boundary.py       # Modules 01-04
+python scripts/run_boundary.py --synthetic --frames 5  # standalone Module 04
 python scripts/run_fusion.py         # Modules 01-05
 ```
 
@@ -350,7 +361,8 @@ camera, so camera-image "up" is not a meaningful reference.
 - Module 03 detects configured ArUco markers, or accepts manual calibration. Module 02 may separately detect rack/context objects.
 - Module 03 publishes `ReferenceFrameInfo` (provenance, verification, transform and axes) and expresses landmarks, motion and orientation
   **relative to the rack/payload**.
-- Module 04 measures boundary orientation relative to the same reference.
+- Module 04 reserves rack-relative orientation in its packet; that computation
+  is not implemented. Image orientation must not be interpreted as physical up.
 - If no valid reference exists, rack-relative outputs are marked invalid — there is no silent fallback
   to camera axes.
 

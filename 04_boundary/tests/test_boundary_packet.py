@@ -1,37 +1,50 @@
-"""
-Tests for BoundaryOutputPacket assembly (Module 04).
-
-Implementation status:
-    Scaffold only. Every test below is skipped until the component exists.
-    Remove the module-level skip marker when implementing the tests.
-
-Required test cases:
-1. frame_id, timestamp_s and target_track_id are copied unchanged.
-2. Output is an instance of shared.schemas.boundary_packet.BoundaryOutputPacket.
-3. Optimization cross-check never modifies Module 03 data.
-4. Failed quality gate records reasons.
-"""
+"""Shared packet and safety invariants; no private packet or dynamic fields."""
 
 import pytest
+from boundary.boundary_pipeline import BoundaryPipeline
+from boundary.output.boundary_packet_builder import build_packet
 
-pytestmark = pytest.mark.skip(reason="Scaffold only: implementation pending")
-
-
-def test_metadata_copied_unchanged():
-    """frame_id, timestamp_s and target_track_id are copied unchanged."""
-    raise NotImplementedError("Test not written yet")
+from shared.enums.boundary_state import BoundaryState
+from shared.schemas.boundary_packet import BoundaryOutputPacket
 
 
-def test_uses_shared_schema():
-    """Output is an instance of shared.schemas.boundary_packet.BoundaryOutputPacket."""
-    raise NotImplementedError("Test not written yet")
+def test_metadata_copied_unchanged(image):
+    output = BoundaryPipeline().process(
+        image, 23, 1.4, target_track_id=99, target_object_track_id=7
+    )
+    assert (
+        output.frame_id,
+        output.timestamp_s,
+        output.target_track_id,
+        output.target_object_track_id,
+    ) == (23, 1.4, 99, 7)
 
 
+def test_uses_shared_schema(image):
+    assert type(BoundaryPipeline().process(image, 0, 0)) is BoundaryOutputPacket
+
+
+@pytest.mark.skip(reason="Optimization cross-check remains explicitly disabled")
 def test_crosscheck_does_not_overwrite():
-    """Optimization cross-check never modifies Module 03 data."""
-    raise NotImplementedError("Test not written yet")
+    pass
 
 
 def test_quality_reasons_recorded():
-    """Failed quality gate records reasons."""
-    raise NotImplementedError("Test not written yet")
+    output = build_packet(frame_id=0, timestamp=0, quality={"quality_ok": False})
+    assert not output.quality_ok and output.quality_reasons
+
+
+def test_rejected_quality_cannot_publish_confidence_contact_or_confirmed_state():
+    output = build_packet(
+        frame_id=0,
+        timestamp=0,
+        quality={"quality_ok": False, "confidence": 0.99},
+        interaction={"near_boundary": True, "contact_proxy": 0.99},
+        boundary_state=BoundaryState.CONTACT,
+        state_confirmed=True,
+        confirmed_frames=10,
+    )
+    assert output.confidence == 0
+    assert not output.hand_contact and output.contact_confidence == 0
+    assert output.boundary_state == BoundaryState.UNKNOWN
+    assert not output.state_confirmed and output.confirmed_frames == 0
